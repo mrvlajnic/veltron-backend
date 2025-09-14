@@ -1,87 +1,103 @@
 const express = require("express");
-const bodyParser = require("body-parser");
 const cors = require("cors");
 const path = require("path");
+const rateLimit = require("express-rate-limit");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// ✅ Colors for terminal output
-const colors = {
-  green: "\x1b[32m",
-  red: "\x1b[31m",
-  reset: "\x1b[0m",
-};
-
-// Middleware
 app.use(cors());
-app.use(bodyParser.json());
-
-// ✅ Log every request
-app.use((req, res, next) => {
-  console.log(`${colors.green}🌍 Request:${colors.reset} ${req.method} ${req.url}`);
-  next();
-});
-
-// ✅ Serve static frontend from /public
+app.use(express.json());
 app.use(express.static(path.join(__dirname, "../public")));
 
-// Storage
+// 🔒 Rate limiting (max 3 messages per minute per IP)
+const messageLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 3,
+  message: { error: "⏳ Too many requests, slow down please." },
+  handler: (req, res, next, options) => {
+    console.warn(`⚠️ Flood attempt blocked from IP: ${req.ip}`);
+    res.status(429).json(options.message);
+  },
+});
+
+// Store inbox + archived
 let messages = [];
 let archived = [];
 
-// Contact form (save message)
-app.post("/contact", (req, res) => {
-  const { name, email, message } = req.body;
-  if (!name || !email || !message) {
-    return res.status(400).json({ error: "All fields are required" });
+// ✅ Handle contact form submissions
+app.post("/api/messages", messageLimiter, (req, res) => {
+  const { name, email, message, honeypot } = req.body;
+
+  // 🕵️ Honeypot trap
+  if (honeypot && honeypot.trim() !== "") {
+    console.warn("🚨 Bot blocked (honeypot triggered).");
+    return res.status(400).json({ error: "Bot detected." });
   }
-  const newMessage = {
+
+  // Validation rules
+  if (!name || !email || !message) {
+    return res.status(400).json({ error: "All fields are required." });
+  }
+  if (message.length < 5) {
+    return res.status(400).json({ error: "Message too short." });
+  }
+  if (message.length > 1000) {
+    return res.status(400).json({ error: "Message too long." });
+  }
+
+  const newMsg = {
     id: Date.now(),
     name,
     email,
     message,
-    timestamp: new Date().toISOString(),
+    date: new Date().toISOString(),
   };
-  messages.push(newMessage);
-  console.log(`${colors.green}✅ Message received from:${colors.reset} ${email}`);
-  res.json({ success: true, message: "Message saved!", data: newMessage });
+
+  messages.push(newMsg);
+  console.log("📩 New message received:", newMsg);
+
+  res.json({ success: true, msg: "Message received!" });
 });
 
-// Get inbox messages
-app.get("/messages", (req, res) => {
+// ✅ Get inbox
+app.get("/api/messages", (req, res) => {
   res.json(messages);
 });
 
-// Archive message
-app.post("/archive/:id", (req, res) => {
-  const id = parseInt(req.params.id);
-  const index = messages.findIndex((m) => m.id === id);
-  if (index === -1) {
-    console.log(`${colors.red}❌ Archive failed:${colors.reset} Message not found`);
+// ✅ Archive a message
+app.post("/api/archive/:id", (req, res) => {
+  const msgId = parseInt(req.params.id, 10);
+  const msgIndex = messages.findIndex((m) => m.id === msgId);
+
+  if (msgIndex === -1) {
     return res.status(404).json({ error: "Message not found" });
   }
 
-  const [msg] = messages.splice(index, 1);
+  const [msg] = messages.splice(msgIndex, 1);
   msg.archivedAt = new Date().toISOString();
   archived.push(msg);
 
-  console.log(`${colors.green}📦 Archived message ID:${colors.reset} ${id}`);
-  res.json({ success: true, message: "Message archived", data: msg });
+  console.log(`📦 Archived message ${msgId} at ${msg.archivedAt}`);
+  res.json({ success: true, archived: msg });
 });
 
-// Get archived messages
-app.get("/archived", (req, res) => {
+// ✅ Get archived messages
+app.get("/api/archived", (req, res) => {
   res.json(archived);
 });
 
-// ✅ Handle 404 (log missing files)
-app.use((req, res) => {
-  console.log(`${colors.red}❌ Not found:${colors.reset} ${req.method} ${req.url}`);
-  res.status(404).send("404 - Page Not Found");
+// ✅ Serve homepage
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "../public/index.html"));
 });
 
-// Start server
+// 🌍 Log every request
+app.use((req, res, next) => {
+  console.log(`🌍 ${req.method} ${req.url}`);
+  next();
+});
+
 app.listen(PORT, () => {
-  console.log(`${colors.green}✅ Veltron backend + frontend running on http://localhost:${PORT}${colors.reset}`);
+  console.log(`✅ Veltron backend running on http://localhost:${PORT}`);
 });
