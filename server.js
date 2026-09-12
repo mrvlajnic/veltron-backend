@@ -240,13 +240,45 @@ app.delete('/api/admin/journal/:id', authenticateAdmin, (req, res) => {
   });
 });
 
+// 🏓 Keep-Alive Health Ping Endpoint
+app.get('/api/ping', (req, res) => {
+  res.json({ status: 'ok', message: 'Veltron Backend is awake & active', timestamp: new Date().toISOString() });
+});
+
 // Fallback route for Admin SPA
 app.use('/admin', express.static(path.join(__dirname, 'public/admin')));
 app.get(/^\/admin/, (req, res) => {
   res.sendFile(path.join(__dirname, 'public/admin/index.html'));
 });
 
+// ⚡ Self-Ping Keep-Alive System (Prevents Render Free Tier Cold Starts)
+const https = require('https');
+const http = require('http');
+
+function startKeepAlive() {
+  const externalUrl = process.env.RENDER_EXTERNAL_URL;
+  if (!externalUrl) {
+    console.log('💡 Local environment detected (RENDER_EXTERNAL_URL not set).');
+    return;
+  }
+
+  const pingUrl = `${externalUrl}/api/ping`;
+  const PING_INTERVAL = 12 * 60 * 1000; // 12 minutes (Render sleeps after 15m)
+
+  console.log(`⏰ Keep-alive self-ping activated for ${pingUrl} (Every 12 mins)`);
+
+  setInterval(() => {
+    const protocol = pingUrl.startsWith('https') ? https : http;
+    protocol.get(pingUrl, (res) => {
+      console.log(`🏓 Self-ping response: HTTP ${res.statusCode} at ${new Date().toLocaleTimeString()}`);
+    }).on('error', (err) => {
+      console.warn('⚠️ Self-ping error:', err.message);
+    });
+  }, PING_INTERVAL);
+}
+
 app.listen(PORT, () => {
   console.log(`🚀 Veltron Backend active on http://localhost:${PORT}`);
   console.log(`🔐 Admin Panel: http://localhost:${PORT}/admin`);
+  startKeepAlive();
 });
