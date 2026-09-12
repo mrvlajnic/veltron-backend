@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Veltron Auto — Admin Dashboard</title>
+    <title>Veltron Auto — Admin Dashboard & Journal Manager</title>
     <style>
         :root {
             --bg-black: #080808;
@@ -40,27 +40,27 @@
         .login-card h2 { font-size: 1.8rem; letter-spacing: 3px; margin-bottom: 8px; }
         .login-card p { font-size: 0.85rem; color: var(--text-gray); margin-bottom: 25px; }
 
-        .form-group { margin-bottom: 20px; text-align: left; }
+        .form-group { margin-bottom: 18px; text-align: left; }
         .form-group label { display: block; font-size: 0.75rem; color: var(--text-gray); text-transform: uppercase; margin-bottom: 6px; letter-spacing: 1px; }
-        .form-input {
+        .form-input, .form-textarea, .form-select {
             width: 100%;
             background: #000;
             border: 1px solid var(--border-color);
             color: #fff;
-            padding: 12px;
+            padding: 11px 14px;
             border-radius: 4px;
             font-size: 0.95rem;
             outline: none;
             transition: border-color 0.3s;
         }
-        .form-input:focus { border-color: var(--primary-red); }
+        .form-input:focus, .form-textarea:focus, .form-select:focus { border-color: var(--primary-red); }
+        .form-textarea { resize: vertical; min-height: 120px; line-height: 1.5; }
 
         .btn-submit {
-            width: 100%;
             background: var(--primary-red);
             color: #fff;
             border: none;
-            padding: 12px;
+            padding: 12px 24px;
             border-radius: 4px;
             font-size: 0.9rem;
             font-weight: bold;
@@ -70,6 +70,19 @@
             transition: opacity 0.3s;
         }
         .btn-submit:hover { opacity: 0.9; }
+
+        .btn-secondary {
+            background: #222;
+            color: #fff;
+            border: 1px solid #333;
+            padding: 12px 20px;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+        .btn-secondary:hover { background: #333; }
 
         .alert-error {
             background: rgba(255,0,0,0.15);
@@ -206,7 +219,7 @@
             background: #000;
             border: 1px solid var(--border-color);
             color: #ccc;
-            padding: 6px 12px;
+            padding: 6px 14px;
             font-size: 0.8rem;
             border-radius: 4px;
             cursor: pointer;
@@ -216,6 +229,7 @@
         .btn-action:hover { border-color: #666; color: #fff; }
         .btn-action.btn-danger:hover { border-color: var(--primary-red); color: #ff6b6b; }
         .btn-action.btn-archive:hover { border-color: #3b82f6; color: #60a5fa; }
+        .btn-action.btn-edit:hover { border-color: #10b981; color: #34d399; }
 
         .empty-state {
             text-align: center;
@@ -226,6 +240,168 @@
             border: 1px dashed var(--border-color);
             border-radius: 6px;
         }
+
+        /* Journal Specific UI */
+        .journal-header-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .journal-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 25px;
+        }
+
+        .journal-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            transition: border-color 0.3s;
+        }
+        .journal-card:hover { border-color: #444; }
+
+        .journal-card-cover {
+            width: 100%;
+            height: 180px;
+            object-fit: cover;
+            background: #111;
+            display: block;
+        }
+
+        .journal-card-body {
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+        }
+
+        .journal-badge {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            padding: 3px 8px;
+            border-radius: 3px;
+            width: fit-content;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+        .badge-published { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); }
+        .badge-draft { background: rgba(156, 163, 175, 0.2); color: #9ca3af; border: 1px solid rgba(156, 163, 175, 0.4); }
+
+        .journal-card-title {
+            font-size: 1.15rem;
+            font-weight: bold;
+            margin-bottom: 8px;
+            line-height: 1.4;
+        }
+
+        .journal-card-summary {
+            font-size: 0.85rem;
+            color: var(--text-gray);
+            line-height: 1.5;
+            margin-bottom: 15px;
+            flex: 1;
+        }
+
+        .journal-card-meta {
+            font-size: 0.75rem;
+            color: #666;
+            margin-bottom: 15px;
+        }
+
+        /* Modal */
+        .modal-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(5px);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .modal-content {
+            background: #101010;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            width: 100%;
+            max-width: 850px;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .modal-header {
+            padding: 20px 25px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .modal-header h3 { font-size: 1.3rem; letter-spacing: 1px; }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: var(--text-gray);
+            font-size: 1.5rem;
+            cursor: pointer;
+            line-height: 1;
+        }
+        .modal-close:hover { color: #fff; }
+
+        .modal-body {
+            padding: 25px;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        .modal-footer {
+            padding: 15px 25px;
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+            background: #0d0d0d;
+        }
+
+        .cover-preview {
+            width: 100%;
+            height: 160px;
+            object-fit: cover;
+            border-radius: 4px;
+            margin-top: 8px;
+            background: #000;
+            border: 1px solid var(--border-color);
+            display: none;
+        }
+
+        .editor-toolbar {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 8px;
+            flex-wrap: wrap;
+        }
+        .btn-tool {
+            background: #1c1c1c;
+            border: 1px solid var(--border-color);
+            color: #ddd;
+            padding: 5px 10px;
+            font-size: 0.8rem;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .btn-tool:hover { background: #2a2a2a; color: #fff; }
     </style>
 </head>
 <body>
@@ -247,7 +423,7 @@
                     <label>Password</label>
                     <input type="password" id="password" class="form-input" required autocomplete="current-password" placeholder="••••••••">
                 </div>
-                <button type="submit" class="btn-submit">Login</button>
+                <button type="submit" class="btn-submit" style="width: 100%;">Login</button>
             </form>
         </div>
     </div>
@@ -255,7 +431,7 @@
     <!-- 2. MAIN DASHBOARD -->
     <div class="dashboard-container" id="dashboard-container">
         <header class="dash-header">
-            <div class="dash-logo">VELTRON <span>DASHBOARD</span></div>
+            <div class="dash-logo">VELTRON <span>CONSOLE</span></div>
             <button class="btn-logout" id="logout-btn">Logout</button>
         </header>
 
@@ -275,8 +451,8 @@
                     <div class="stat-val" id="stat-archived">0</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-title">Journal Posts</div>
-                    <div class="stat-val" id="stat-journal">0</div>
+                    <div class="stat-title">Journal Articles</div>
+                    <div class="stat-val highlight" id="stat-journal">0</div>
                 </div>
             </div>
 
@@ -284,7 +460,7 @@
             <div class="tab-nav">
                 <button class="tab-btn active" data-tab="inbox">📩 Inbox (<span id="inbox-count">0</span>)</button>
                 <button class="tab-btn" data-tab="archive">📦 Archive (<span id="archive-count">0</span>)</button>
-                <button class="tab-btn" data-tab="journal">📝 Journal (Future)</button>
+                <button class="tab-btn" data-tab="journal">📝 Journal & News (<span id="journal-count">0</span>)</button>
             </div>
 
             <!-- TAB 1: INBOX -->
@@ -297,14 +473,103 @@
                 <div class="msg-list" id="archive-list"></div>
             </div>
 
-            <!-- TAB 3: JOURNAL (FUTURE) -->
+            <!-- TAB 3: JOURNAL MANAGER -->
             <div class="tab-content" id="tab-journal">
-                <div class="empty-state">
-                    <h3>📝 Journal Management Module</h3>
-                    <p style="margin-top: 10px;">Ready for future blog/journal publication integration.</p>
+                <div class="journal-header-bar">
+                    <h3 style="font-size: 1.1rem; color: #ccc;">Veltron Journal Articles & Releases</h3>
+                    <button class="btn-submit" id="btn-new-article">+ Create New Article</button>
                 </div>
+                <div class="journal-grid" id="journal-list"></div>
             </div>
 
+        </div>
+    </div>
+
+    <!-- 3. ARTICLE EDITOR MODAL -->
+    <div class="modal-backdrop" id="article-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-title">Create Journal Article</h3>
+                <button class="modal-close" id="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="article-form">
+                    <input type="hidden" id="edit-article-id">
+
+                    <div class="form-group">
+                        <label>Title *</label>
+                        <input type="text" id="article-title" class="form-input" required placeholder="e.g. Next-Gen V-Force Propulsion Validation">
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div class="form-group">
+                            <label>Slug (URL Identifier)</label>
+                            <input type="text" id="article-slug" class="form-input" placeholder="e.g. next-gen-v-force-validation">
+                        </div>
+                        <div class="form-group">
+                            <label>Category</label>
+                            <select id="article-category" class="form-select">
+                                <option value="News">News</option>
+                                <option value="Engineering">Engineering</option>
+                                <option value="Design">Design</option>
+                                <option value="Concepts">Concepts</option>
+                                <option value="Philosophy">Philosophy</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Cover Image (Upload file or enter URL)</label>
+                        <div style="display: flex; gap: 10px; margin-bottom: 8px;">
+                            <input type="text" id="article-cover" class="form-input" placeholder="https://... or /uploads/image.webp">
+                            <label class="btn-secondary" style="white-space: nowrap; cursor: pointer; display: flex; align-items: center;">
+                                📁 Choose File
+                                <input type="file" id="cover-file-input" accept="image/*" style="display:none;">
+                            </label>
+                        </div>
+                        <img id="cover-preview-img" class="cover-preview" alt="Cover Preview">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Summary / Short Excerpt</label>
+                        <textarea id="article-summary" class="form-textarea" style="min-height: 70px;" placeholder="Brief 1-2 sentence overview for the article card..."></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Content (Markdown & HTML Supported with Images) *</label>
+                        <div class="editor-toolbar">
+                            <button type="button" class="btn-tool" onclick="insertFormat('**', '**')"><b>B</b></button>
+                            <button type="button" class="btn-tool" onclick="insertFormat('*', '*')"><i>I</i></button>
+                            <button type="button" class="btn-tool" onclick="insertFormat('### ', '')">H3</button>
+                            <button type="button" class="btn-tool" onclick="insertFormat('> ', '')">Quote</button>
+                            <button type="button" class="btn-tool" onclick="insertFormat('- ', '')">List</button>
+                            <label class="btn-tool" style="cursor: pointer; background: #222; border-color: var(--primary-red); color: #fff;">
+                                📷 Insert Image
+                                <input type="file" id="inline-file-input" accept="image/*" style="display:none;">
+                            </label>
+                        </div>
+                        <textarea id="article-content" class="form-textarea" style="min-height: 250px; font-family: monospace;" required placeholder="Write article content here using Markdown or HTML..."></textarea>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div class="form-group">
+                            <label>Author</label>
+                            <input type="text" id="article-author" class="form-input" value="Boris Vlajnić">
+                        </div>
+                        <div class="form-group">
+                            <label>Publication Status</label>
+                            <select id="article-status" class="form-select">
+                                <option value="published">Published (Visible on site)</option>
+                                <option value="draft">Draft (Hidden)</option>
+                            </select>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary" id="btn-cancel-modal">Cancel</button>
+                <button type="button" class="btn-submit" id="btn-save-article">Save & Publish</button>
+            </div>
         </div>
     </div>
 
@@ -318,12 +583,7 @@
         const loginError = document.getElementById('login-error');
         const logoutBtn = document.getElementById('logout-btn');
 
-        // Check Auth on init
-        if (authToken) {
-            showDashboard();
-        } else {
-            showLogin();
-        }
+        if (authToken) { showDashboard(); } else { showLogin(); }
 
         function showLogin() {
             loginWrapper.style.display = 'flex';
@@ -339,7 +599,6 @@
         loginForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             loginError.style.display = 'none';
-
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
 
@@ -349,14 +608,13 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ username, password })
                 });
-
                 const data = await res.json();
                 if (res.ok && data.token) {
                     authToken = data.token;
                     localStorage.setItem('veltron_admin_token', authToken);
                     showDashboard();
                 } else {
-                    loginError.textContent = data.error || 'Invalid username or password.';
+                    loginError.textContent = data.error || 'Invalid credentials.';
                     loginError.style.display = 'block';
                 }
             } catch (err) {
@@ -371,12 +629,11 @@
             showLogin();
         });
 
-        // Tabs Switching
+        // Tabs
         document.querySelectorAll('.tab-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
                 document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-
                 btn.classList.add('active');
                 const target = btn.getAttribute('data-tab');
                 document.getElementById(`tab-${target}`).classList.add('active');
@@ -401,7 +658,6 @@
 
         async function loadDashboardData() {
             try {
-                // Fetch Stats
                 const stats = await fetchAuth('/api/admin/stats');
                 document.getElementById('stat-active').textContent = stats.messages.active || 0;
                 document.getElementById('stat-unread').textContent = stats.messages.unread || 0;
@@ -410,15 +666,17 @@
 
                 document.getElementById('inbox-count').textContent = stats.messages.active || 0;
                 document.getElementById('archive-count').textContent = stats.messages.archived || 0;
+                document.getElementById('journal-count').textContent = stats.journal.journal_count || 0;
 
-                // Load Messages
                 loadInbox();
                 loadArchive();
+                loadJournal();
             } catch (e) {
                 console.error(e);
             }
         }
 
+        // --- INBOX ---
         async function loadInbox() {
             const messages = await fetchAuth('/api/admin/messages');
             const container = document.getElementById('inbox-list');
@@ -426,7 +684,6 @@
                 container.innerHTML = '<div class="empty-state">No incoming messages in inbox.</div>';
                 return;
             }
-
             container.innerHTML = messages.map(msg => `
                 <div class="msg-card ${msg.status === 'unread' ? 'unread' : ''}">
                     <div class="msg-header">
@@ -446,6 +703,7 @@
             `).join('');
         }
 
+        // --- ARCHIVE ---
         async function loadArchive() {
             const archived = await fetchAuth('/api/admin/archived');
             const container = document.getElementById('archive-list');
@@ -453,7 +711,6 @@
                 container.innerHTML = '<div class="empty-state">No archived messages.</div>';
                 return;
             }
-
             container.innerHTML = archived.map(msg => `
                 <div class="msg-card">
                     <div class="msg-header">
@@ -473,28 +730,223 @@
         }
 
         async function markAsRead(id) {
-            await fetchAuth(`/api/admin/messages/${id}/status`, {
-                method: 'POST',
-                body: JSON.stringify({ status: 'read' })
-            });
+            await fetchAuth(`/api/admin/messages/${id}/status`, { method: 'POST', body: JSON.stringify({ status: 'read' }) });
             loadDashboardData();
         }
-
         async function archiveMsg(id) {
             await fetchAuth(`/api/admin/messages/${id}/archive`, { method: 'POST' });
             loadDashboardData();
         }
-
         async function unarchiveMsg(id) {
             await fetchAuth(`/api/admin/messages/${id}/unarchive`, { method: 'POST' });
             loadDashboardData();
         }
-
         async function deleteMsg(id) {
-            if (confirm('Are you sure you want to delete this message?')) {
+            if (confirm('Delete this message?')) {
                 await fetchAuth(`/api/admin/messages/${id}`, { method: 'DELETE' });
                 loadDashboardData();
             }
+        }
+
+        // --- JOURNAL MANAGEMENT ---
+        async function loadJournal() {
+            const posts = await fetchAuth('/api/admin/journal');
+            const container = document.getElementById('journal-list');
+            if (!posts || posts.length === 0) {
+                container.innerHTML = '<div class="empty-state" style="grid-column: 1 / -1;">No journal articles yet. Click "+ Create New Article" to write your first story!</div>';
+                return;
+            }
+
+            container.innerHTML = posts.map(post => `
+                <div class="journal-card">
+                    ${post.cover_image ? `<img src="${escapeHtml(post.cover_image)}" class="journal-card-cover" onerror="this.style.display='none'">` : ''}
+                    <div class="journal-card-body">
+                        <span class="journal-badge ${post.status === 'published' ? 'badge-published' : 'badge-draft'}">
+                            ${post.status === 'published' ? '● Published' : '○ Draft'} · ${escapeHtml(post.category || 'General')}
+                        </span>
+                        <h4 class="journal-card-title">${escapeHtml(post.title)}</h4>
+                        <p class="journal-card-summary">${escapeHtml(post.summary || '')}</p>
+                        <div class="journal-card-meta">By ${escapeHtml(post.author || 'Veltron Team')} · ${new Date(post.created_at).toLocaleDateString()}</div>
+                        <div class="msg-actions">
+                            <button class="btn-action btn-edit" onclick="editArticle(${post.id})">✏ Edit</button>
+                            <button class="btn-action btn-danger" onclick="deleteArticle(${post.id})">🗑 Delete</button>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Modal Controls
+        const articleModal = document.getElementById('article-modal');
+        const modalTitle = document.getElementById('modal-title');
+        const editIdInput = document.getElementById('edit-article-id');
+        const titleInput = document.getElementById('article-title');
+        const slugInput = document.getElementById('article-slug');
+        const categoryInput = document.getElementById('article-category');
+        const coverInput = document.getElementById('article-cover');
+        const coverPreview = document.getElementById('cover-preview-img');
+        const summaryInput = document.getElementById('article-summary');
+        const contentInput = document.getElementById('article-content');
+        const authorInput = document.getElementById('article-author');
+        const statusInput = document.getElementById('article-status');
+
+        document.getElementById('btn-new-article').addEventListener('click', () => {
+            modalTitle.textContent = 'Create New Article';
+            editIdInput.value = '';
+            document.getElementById('article-form').reset();
+            coverPreview.style.display = 'none';
+            authorInput.value = 'Boris Vlajnić';
+            articleModal.style.display = 'flex';
+        });
+
+        document.getElementById('modal-close').addEventListener('click', () => { articleModal.style.display = 'none'; });
+        document.getElementById('btn-cancel-modal').addEventListener('click', () => { articleModal.style.display = 'none'; });
+
+        // Auto-generate slug from title
+        titleInput.addEventListener('input', () => {
+            if (!editIdInput.value) {
+                slugInput.value = titleInput.value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+            }
+        });
+
+        // Cover preview
+        coverInput.addEventListener('input', () => {
+            if (coverInput.value.trim()) {
+                coverPreview.src = coverInput.value.trim();
+                coverPreview.style.display = 'block';
+            } else {
+                coverPreview.style.display = 'none';
+            }
+        });
+
+        // Cover File Upload
+        document.getElementById('cover-file-input').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const url = await uploadImageFile(file);
+            if (url) {
+                coverInput.value = url;
+                coverPreview.src = url;
+                coverPreview.style.display = 'block';
+            }
+        });
+
+        // Inline Editor File Upload
+        document.getElementById('inline-file-input').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const url = await uploadImageFile(file);
+            if (url) {
+                const imgTag = `\n![${file.name}](${url})\n`;
+                insertAtCursor(contentInput, imgTag);
+            }
+        });
+
+        async function uploadImageFile(file) {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = async (event) => {
+                    const base64Data = event.target.result;
+                    try {
+                        const res = await fetchAuth('/api/admin/upload', {
+                            method: 'POST',
+                            body: JSON.stringify({ image: base64Data, name: file.name })
+                        });
+                        if (res.success) {
+                            resolve(res.url);
+                        } else {
+                            alert(res.error || 'Upload failed');
+                            resolve(null);
+                        }
+                    } catch (err) {
+                        alert('Failed to upload image');
+                        resolve(null);
+                    }
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        // Save Article
+        document.getElementById('btn-save-article').addEventListener('click', async () => {
+            const id = editIdInput.value;
+            const payload = {
+                title: titleInput.value,
+                slug: slugInput.value,
+                category: categoryInput.value,
+                cover_image: coverInput.value,
+                summary: summaryInput.value,
+                content: contentInput.value,
+                author: authorInput.value,
+                status: statusInput.value
+            };
+
+            if (!payload.title || !payload.content) {
+                alert('Title and Content are required.');
+                return;
+            }
+
+            try {
+                if (id) {
+                    await fetchAuth(`/api/admin/journal/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+                } else {
+                    await fetchAuth('/api/admin/journal', { method: 'POST', body: JSON.stringify(payload) });
+                }
+                articleModal.style.display = 'none';
+                loadDashboardData();
+            } catch (err) {
+                alert('Error saving article: ' + err.message);
+            }
+        });
+
+        // Edit Article
+        async function editArticle(id) {
+            const post = await fetchAuth(`/api/admin/journal/${id}`);
+            if (!post) return;
+            modalTitle.textContent = 'Edit Journal Article';
+            editIdInput.value = post.id;
+            titleInput.value = post.title;
+            slugInput.value = post.slug;
+            categoryInput.value = post.category || 'General';
+            coverInput.value = post.cover_image || '';
+            summaryInput.value = post.summary || '';
+            contentInput.value = post.content || '';
+            authorInput.value = post.author || 'Boris Vlajnić';
+            statusInput.value = post.status || 'published';
+
+            if (post.cover_image) {
+                coverPreview.src = post.cover_image;
+                coverPreview.style.display = 'block';
+            } else {
+                coverPreview.style.display = 'none';
+            }
+
+            articleModal.style.display = 'flex';
+        }
+
+        async function deleteArticle(id) {
+            if (confirm('Are you sure you want to delete this journal article?')) {
+                await fetchAuth(`/api/admin/journal/${id}`, { method: 'DELETE' });
+                loadDashboardData();
+            }
+        }
+
+        function insertFormat(before, after) {
+            const textarea = contentInput;
+            const start = textarea.selectionStart;
+            const end = textarea.selectionEnd;
+            const selectedText = textarea.value.substring(start, end);
+            const replacement = before + (selectedText || 'text') + after;
+            textarea.value = textarea.value.substring(0, start) + replacement + textarea.value.substring(end);
+            textarea.focus();
+            textarea.setSelectionRange(start + before.length, start + before.length + (selectedText.length || 4));
+        }
+
+        function insertAtCursor(textarea, text) {
+            const start = textarea.selectionStart;
+            const end = textarea.selectionEnd;
+            textarea.value = textarea.value.substring(0, start) + text + textarea.value.substring(end);
+            textarea.focus();
         }
 
         function escapeHtml(str) {

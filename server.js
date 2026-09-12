@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 const rateLimit = require('express-rate-limit');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
@@ -10,12 +11,19 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || 'veltron_super_secret_jwt_key_2026';
 
-app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Ensure uploads folder exists
+const uploadsDir = path.join(__dirname, 'public/uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
 
-// Serve static frontend & admin UI
+app.use(cors());
+app.use(express.json({ limit: '15mb' }));
+app.use(express.urlencoded({ extended: true, limit: '15mb' }));
+
+// Serve static frontend, uploads & admin UI
 app.use(express.static(path.join(__dirname, 'public')));
+app.use('/uploads', express.static(uploadsDir));
 
 // 🔒 Anti-Bot Rate Limiting (max 5 contact submissions per 10 min per IP)
 const contactLimiter = rateLimit({
@@ -50,10 +58,9 @@ function authenticateAdmin(req, res, next) {
 app.post('/api/contact', contactLimiter, (req, res) => {
   const { name, email, message, website_hp } = req.body;
 
-  // 🕵️ Honeypot Trap: If hidden "website_hp" field is filled, silently reject bot!
+  // 🕵️ Honeypot Trap
   if (website_hp && website_hp.trim() !== '') {
     console.warn(`🚨 Bot detected via honeypot trap from IP: ${req.ip}`);
-    // Fake success response to trick the bot
     return res.json({ success: true, message: 'Message sent successfully!' });
   }
 
@@ -88,14 +95,34 @@ app.post('/api/contact', contactLimiter, (req, res) => {
   );
 });
 
-// Alias route for backwards compatibility
 app.post('/api/messages', contactLimiter, (req, res) => {
   req.url = '/api/contact';
   app.handle(req, res);
 });
 
 // ==========================================================================
-// 2. ADMIN AUTHENTICATION
+// 2. PUBLIC JOURNAL API (Read Published Articles)
+// ==========================================================================
+app.get('/api/journal', (req, res) => {
+  db.all("SELECT * FROM journal_posts WHERE status = 'published' ORDER BY created_at DESC", (err, posts) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(posts || []);
+  });
+});
+
+app.get('/api/journal/:slug', (req, res) => {
+  const { slug } = req.params;
+  db.get('SELECT * FROM journal_posts WHERE slug = ?', [slug], (err, post) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!post || (post.status !== 'published' && req.query.preview !== 'true')) {
+      return res.status(404).json({ error: 'Article not found.' });
+    }
+    res.json(post);
+  });
+});
+
+// ==========================================================================
+// 3. ADMIN AUTHENTICATION
 // ==========================================================================
 app.post('/api/admin/login', (req, res) => {
   const { username, password } = req.body;
@@ -125,10 +152,8 @@ app.post('/api/admin/login', (req, res) => {
 });
 
 // ==========================================================================
-// 3. ADMIN DASHBOARD API (Protected Routes)
+// 4. ADMIN DASHBOARD & MESSAGES API (Protected)
 // ==========================================================================
-
-// Dashboard Stats
 app.get('/api/admin/stats', authenticateAdmin, (req, res) => {
   db.get(
     `SELECT 
@@ -150,7 +175,6 @@ app.get('/api/admin/stats', authenticateAdmin, (req, res) => {
   );
 });
 
-// Get Active Inbox Messages
 app.get('/api/admin/messages', authenticateAdmin, (req, res) => {
   db.all('SELECT * FROM messages WHERE is_archived = 0 ORDER BY created_at DESC', (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
@@ -158,7 +182,6 @@ app.get('/api/admin/messages', authenticateAdmin, (req, res) => {
   });
 });
 
-// Get Archived Messages
 app.get('/api/admin/archived', authenticateAdmin, (req, res) => {
   db.all('SELECT * FROM messages WHERE is_archived = 1 ORDER BY archived_at DESC', (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
@@ -166,7 +189,6 @@ app.get('/api/admin/archived', authenticateAdmin, (req, res) => {
   });
 });
 
-// Archive a message
 app.post('/api/admin/messages/:id/archive', authenticateAdmin, (req, res) => {
   const { id } = req.params;
   const now = new Date().toISOString();
@@ -176,7 +198,6 @@ app.post('/api/admin/messages/:id/archive', authenticateAdmin, (req, res) => {
   });
 });
 
-// Unarchive a message
 app.post('/api/admin/messages/:id/unarchive', authenticateAdmin, (req, res) => {
   const { id } = req.params;
   db.run('UPDATE messages SET is_archived = 0, archived_at = NULL WHERE id = ?', [id], function (err) {
@@ -185,7 +206,6 @@ app.post('/api/admin/messages/:id/unarchive', authenticateAdmin, (req, res) => {
   });
 });
 
-// Mark message status (e.g. read/replied)
 app.post('/api/admin/messages/:id/status', authenticateAdmin, (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
@@ -195,7 +215,6 @@ app.post('/api/admin/messages/:id/status', authenticateAdmin, (req, res) => {
   });
 });
 
-// Delete message
 app.delete('/api/admin/messages/:id', authenticateAdmin, (req, res) => {
   const { id } = req.params;
   db.run('DELETE FROM messages WHERE id = ?', [id], function (err) {
@@ -205,7 +224,7 @@ app.delete('/api/admin/messages/:id', authenticateAdmin, (req, res) => {
 });
 
 // ==========================================================================
-// 4. JOURNAL POSTS MANAGEMENT API (Future-Ready)
+// 5. ADMIN JOURNAL MANAGEMENT API (Create, Edit, Delete, Upload Images)
 // ==========================================================================
 app.get('/api/admin/journal', authenticateAdmin, (req, res) => {
   db.all('SELECT * FROM journal_posts ORDER BY created_at DESC', (err, rows) => {
@@ -214,20 +233,72 @@ app.get('/api/admin/journal', authenticateAdmin, (req, res) => {
   });
 });
 
+app.get('/api/admin/journal/:id', authenticateAdmin, (req, res) => {
+  const { id } = req.params;
+  db.get('SELECT * FROM journal_posts WHERE id = ?', [id], (err, post) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!post) return res.status(404).json({ error: 'Post not found.' });
+    res.json(post);
+  });
+});
+
 app.post('/api/admin/journal', authenticateAdmin, (req, res) => {
-  const { title, slug, summary, content, status } = req.body;
+  const { title, slug, category, cover_image, summary, content, author, status } = req.body;
   if (!title || !content) {
     return res.status(400).json({ error: 'Title and Content are required.' });
   }
 
-  const postSlug = slug || title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+  const postSlug = slug && slug.trim() !== '' 
+    ? slug.trim().toLowerCase().replace(/[^a-z0-9-]+/g, '-')
+    : title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 
   db.run(
-    'INSERT INTO journal_posts (title, slug, summary, content, status) VALUES (?, ?, ?, ?, ?)',
-    [title, postSlug, summary || '', content, status || 'draft'],
+    'INSERT INTO journal_posts (title, slug, category, cover_image, summary, content, author, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    [
+      title.trim(),
+      postSlug,
+      category || 'General',
+      cover_image || '',
+      summary || '',
+      content,
+      author || 'Veltron Team',
+      status || 'published'
+    ],
     function (err) {
       if (err) return res.status(500).json({ error: err.message });
-      res.json({ success: true, id: this.lastID, message: 'Journal post saved.' });
+      res.json({ success: true, id: this.lastID, message: 'Journal article published successfully.' });
+    }
+  );
+});
+
+app.put('/api/admin/journal/:id', authenticateAdmin, (req, res) => {
+  const { id } = req.params;
+  const { title, slug, category, cover_image, summary, content, author, status } = req.body;
+
+  if (!title || !content) {
+    return res.status(400).json({ error: 'Title and Content are required.' });
+  }
+
+  const postSlug = slug && slug.trim() !== ''
+    ? slug.trim().toLowerCase().replace(/[^a-z0-9-]+/g, '-')
+    : title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+
+  db.run(
+    'UPDATE journal_posts SET title = ?, slug = ?, category = ?, cover_image = ?, summary = ?, content = ?, author = ?, status = ? WHERE id = ?',
+    [
+      title.trim(),
+      postSlug,
+      category || 'General',
+      cover_image || '',
+      summary || '',
+      content,
+      author || 'Veltron Team',
+      status || 'published',
+      id
+    ],
+    function (err) {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ success: true, message: 'Journal article updated.' });
     }
   );
 });
@@ -236,22 +307,52 @@ app.delete('/api/admin/journal/:id', authenticateAdmin, (req, res) => {
   const { id } = req.params;
   db.run('DELETE FROM journal_posts WHERE id = ?', [id], function (err) {
     if (err) return res.status(500).json({ error: err.message });
-    res.json({ success: true, message: 'Journal post deleted.' });
+    res.json({ success: true, message: 'Journal article deleted.' });
   });
 });
 
-// 🏓 Keep-Alive Health Ping Endpoint
+// 📸 Image Upload Endpoint (Base64 -> Saved File)
+app.post('/api/admin/upload', authenticateAdmin, (req, res) => {
+  const { image, name } = req.body;
+  if (!image) {
+    return res.status(400).json({ error: 'No image data provided.' });
+  }
+
+  try {
+    const matches = image.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+    if (!matches || matches.length !== 3) {
+      return res.status(400).json({ error: 'Invalid base64 image data.' });
+    }
+
+    const ext = matches[1].split('/')[1] || 'png';
+    const buffer = Buffer.from(matches[2], 'base64');
+    const safeName = (name || 'image').replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    const filename = `${Date.now()}_${safeName}.${ext}`;
+    const filePath = path.join(uploadsDir, filename);
+
+    fs.writeFileSync(filePath, buffer);
+
+    const relativeUrl = `/uploads/${filename}`;
+    res.json({ success: true, url: relativeUrl, filename });
+  } catch (err) {
+    console.error('Upload error:', err);
+    res.status(500).json({ error: 'Failed to upload image.' });
+  }
+});
+
+// ==========================================================================
+// 6. HEALTH & ROUTING
+// ==========================================================================
 app.get('/api/ping', (req, res) => {
   res.json({ status: 'ok', message: 'Veltron Backend is awake & active', timestamp: new Date().toISOString() });
 });
 
-// Fallback route for Admin SPA
 app.use('/admin', express.static(path.join(__dirname, 'public/admin')));
 app.get(/^\/admin/, (req, res) => {
   res.sendFile(path.join(__dirname, 'public/admin/index.html'));
 });
 
-// ⚡ Self-Ping Keep-Alive System (Prevents Render Free Tier Cold Starts)
+// ⚡ Self-Ping Keep-Alive System
 const https = require('https');
 const http = require('http');
 
@@ -263,7 +364,7 @@ function startKeepAlive() {
   }
 
   const pingUrl = `${externalUrl}/api/ping`;
-  const PING_INTERVAL = 12 * 60 * 1000; // 12 minutes (Render sleeps after 15m)
+  const PING_INTERVAL = 12 * 60 * 1000;
 
   console.log(`⏰ Keep-alive self-ping activated for ${pingUrl} (Every 12 mins)`);
 
