@@ -241,7 +241,8 @@ app.delete('/api/admin/journal/:id', authenticateAdmin, (req, res) => {
 });
 
 // Fallback route for Admin SPA
-app.get('/admin*', (req, res) => {
+app.use('/admin', express.static(path.join(__dirname, 'public/admin')));
+app.get(/^\/admin/, (req, res) => {
   res.sendFile(path.join(__dirname, 'public/admin/index.html'));
 });
 
