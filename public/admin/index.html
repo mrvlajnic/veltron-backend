@@ -402,7 +402,16 @@
             cursor: pointer;
         }
         .btn-tool:hover { background: #2a2a2a; color: #fff; }
+
+        /* Quill Customization */
+        .ql-toolbar.ql-snow { border-color: var(--border-color); background: #111; }
+        .ql-container.ql-snow { border-color: var(--border-color); background: #000; color: #fff; font-size: 0.95rem; min-height: 250px; }
+        .ql-snow .ql-stroke { stroke: #fff; }
+        .ql-snow .ql-fill { fill: #fff; }
+        .ql-snow .ql-picker { color: #fff; }
     </style>
+    <link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">
+    <script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
 </head>
 <body>
 
@@ -536,19 +545,9 @@
                     </div>
 
                     <div class="form-group">
-                        <label>Content (Markdown & HTML Supported with Images) *</label>
-                        <div class="editor-toolbar">
-                            <button type="button" class="btn-tool" onclick="insertFormat('**', '**')"><b>B</b></button>
-                            <button type="button" class="btn-tool" onclick="insertFormat('*', '*')"><i>I</i></button>
-                            <button type="button" class="btn-tool" onclick="insertFormat('### ', '')">H3</button>
-                            <button type="button" class="btn-tool" onclick="insertFormat('> ', '')">Quote</button>
-                            <button type="button" class="btn-tool" onclick="insertFormat('- ', '')">List</button>
-                            <label class="btn-tool" style="cursor: pointer; background: #222; border-color: var(--primary-red); color: #fff;">
-                                📷 Insert Image
-                                <input type="file" id="inline-file-input" accept="image/*" style="display:none;">
-                            </label>
-                        </div>
-                        <textarea id="article-content" class="form-textarea" style="min-height: 250px; font-family: monospace;" required placeholder="Write article content here using Markdown or HTML..."></textarea>
+                        <label>Content *</label>
+                        <div id="quill-editor" style="height: 300px;"></div>
+                        <input type="hidden" id="article-content">
                     </div>
 
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
@@ -790,17 +789,55 @@
         const authorInput = document.getElementById('article-author');
         const statusInput = document.getElementById('article-status');
 
+        let isDirty = false;
+        
+        // Initialize Quill Editor
+        const quill = new Quill('#quill-editor', {
+            theme: 'snow',
+            modules: {
+                toolbar: [
+                    [{ 'header': [1, 2, 3, false] }],
+                    ['bold', 'italic', 'underline', 'strike'],
+                    ['blockquote', 'code-block'],
+                    [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                    ['link', 'image'],
+                    ['clean']
+                ]
+            }
+        });
+
+        // Track unsaved changes
+        const setDirty = () => { isDirty = true; };
+        document.getElementById('article-form').addEventListener('input', setDirty);
+        quill.on('text-change', () => { isDirty = true; });
+
+        function closeArticleModal() {
+            if (isDirty && !confirm('You have unsaved changes. Are you sure you want to close?')) {
+                return;
+            }
+            articleModal.style.display = 'none';
+        }
+
+        window.addEventListener('beforeunload', (e) => {
+            if (isDirty && articleModal.style.display !== 'none') {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        });
+
         document.getElementById('btn-new-article').addEventListener('click', () => {
             modalTitle.textContent = 'Create New Article';
             editIdInput.value = '';
             document.getElementById('article-form').reset();
+            quill.root.innerHTML = '';
             coverPreview.style.display = 'none';
             authorInput.value = 'Boris Vlajnić';
+            isDirty = false;
             articleModal.style.display = 'flex';
         });
 
-        document.getElementById('modal-close').addEventListener('click', () => { articleModal.style.display = 'none'; });
-        document.getElementById('btn-cancel-modal').addEventListener('click', () => { articleModal.style.display = 'none'; });
+        document.getElementById('modal-close').addEventListener('click', closeArticleModal);
+        document.getElementById('btn-cancel-modal').addEventListener('click', closeArticleModal);
 
         // Auto-generate slug from title
         titleInput.addEventListener('input', () => {
@@ -831,15 +868,22 @@
             }
         });
 
-        // Inline Editor File Upload
-        document.getElementById('inline-file-input').addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-            const url = await uploadImageFile(file);
-            if (url) {
-                const imgTag = `\n![${file.name}](${url})\n`;
-                insertAtCursor(contentInput, imgTag);
-            }
+        // Quill Image Upload Handler
+        quill.getModule('toolbar').addHandler('image', () => {
+            const input = document.createElement('input');
+            input.setAttribute('type', 'file');
+            input.setAttribute('accept', 'image/*');
+            input.click();
+
+            input.onchange = async () => {
+                const file = input.files[0];
+                if (!file) return;
+                const url = await uploadImageFile(file);
+                if (url) {
+                    const range = quill.getSelection();
+                    quill.insertEmbed(range.index, 'image', url);
+                }
+            };
         });
 
         async function uploadImageFile(file) {
@@ -876,12 +920,12 @@
                 category: categoryInput.value,
                 cover_image: coverInput.value,
                 summary: summaryInput.value,
-                content: contentInput.value,
+                content: quill.root.innerHTML,
                 author: authorInput.value,
                 status: statusInput.value
             };
 
-            if (!payload.title || !payload.content) {
+            if (!payload.title || !payload.content || payload.content === '<p><br></p>') {
                 alert('Title and Content are required.');
                 return;
             }
@@ -892,6 +936,7 @@
                 } else {
                     await fetchAuth('/api/admin/journal', { method: 'POST', body: JSON.stringify(payload) });
                 }
+                isDirty = false;
                 articleModal.style.display = 'none';
                 loadDashboardData();
             } catch (err) {
@@ -910,7 +955,7 @@
             categoryInput.value = post.category || 'General';
             coverInput.value = post.cover_image || '';
             summaryInput.value = post.summary || '';
-            contentInput.value = post.content || '';
+            quill.root.innerHTML = post.content || '';
             authorInput.value = post.author || 'Boris Vlajnić';
             statusInput.value = post.status || 'published';
 
@@ -921,6 +966,7 @@
                 coverPreview.style.display = 'none';
             }
 
+            isDirty = false;
             articleModal.style.display = 'flex';
         }
 
@@ -929,24 +975,6 @@
                 await fetchAuth(`/api/admin/journal/${id}`, { method: 'DELETE' });
                 loadDashboardData();
             }
-        }
-
-        function insertFormat(before, after) {
-            const textarea = contentInput;
-            const start = textarea.selectionStart;
-            const end = textarea.selectionEnd;
-            const selectedText = textarea.value.substring(start, end);
-            const replacement = before + (selectedText || 'text') + after;
-            textarea.value = textarea.value.substring(0, start) + replacement + textarea.value.substring(end);
-            textarea.focus();
-            textarea.setSelectionRange(start + before.length, start + before.length + (selectedText.length || 4));
-        }
-
-        function insertAtCursor(textarea, text) {
-            const start = textarea.selectionStart;
-            const end = textarea.selectionEnd;
-            textarea.value = textarea.value.substring(0, start) + text + textarea.value.substring(end);
-            textarea.focus();
         }
 
         function escapeHtml(str) {
