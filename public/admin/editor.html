@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Extended Editor - Veltron Auto</title>
+    <link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">
+    <style>
+        :root {
+            --bg-gray: #f3f4f6;
+            --topbar-bg: #1f2937;
+            --text-light: #f9fafb;
+            --border-color: #374151;
+            --primary-red: #ef4444;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+        body { background-color: var(--bg-gray); display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+        /* Top Bar */
+        .topbar {
+            background-color: var(--topbar-bg);
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            border-bottom: 1px solid var(--border-color);
+            color: white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            z-index: 10;
+        }
+
+        .topbar input, .topbar select {
+            padding: 8px 12px;
+            border: 1px solid var(--border-color);
+            background: #111827;
+            color: white;
+            border-radius: 4px;
+            outline: none;
+            font-size: 0.9rem;
+        }
+        .topbar input:focus, .topbar select:focus { border-color: var(--primary-red); }
+        
+        .topbar input[type="text"]#article-title { flex: 1; font-size: 1.1rem; font-weight: 500; }
+        
+        .btn {
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            font-weight: bold;
+            cursor: pointer;
+            border: none;
+            transition: 0.2s;
+        }
+        .btn-back { background: #374151; color: white; }
+        .btn-back:hover { background: #4b5563; }
+        .btn-save { background: var(--primary-red); color: white; }
+        .btn-save:hover { opacity: 0.9; }
+
+        /* Editor Area */
+        .editor-workspace {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Quill Toolbar Customization */
+        .ql-toolbar.ql-snow {
+            background: white;
+            border: none !important;
+            border-bottom: 1px solid #d1d5db !important;
+            display: flex;
+            justify-content: center;
+            padding: 10px !important;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+            z-index: 5;
+        }
+
+        /* The scrolling container */
+        .page-scroll-container {
+            flex: 1;
+            overflow-y: auto;
+            display: flex;
+            justify-content: center;
+            padding: 40px 20px;
+        }
+
+        /* The "Piece of Paper" */
+        .page-sheet {
+            background: white;
+            width: 100%;
+            max-width: 850px;
+            min-height: 1056px; /* Approx 11 inches */
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            padding: 60px;
+            border-radius: 2px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .ql-container.ql-snow {
+            border: none !important;
+            font-size: 1.05rem;
+            font-family: inherit;
+            flex: 1;
+        }
+        .ql-editor { padding: 0 !important; }
+        .ql-editor.ql-blank::before { left: 0; font-style: normal; color: #9ca3af; }
+
+        .settings-panel {
+            background: #fff;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+            border: 1px solid #e5e7eb;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+        .form-group label { display: block; font-size: 0.8rem; color: #6b7280; font-weight: 600; margin-bottom: 5px; text-transform: uppercase; }
+        .form-group input, .form-group select, .form-group textarea {
+            width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="topbar">
+        <button class="btn btn-back" id="btn-back">← Back</button>
+        <input type="text" id="article-title" placeholder="Document Title...">
+        <select id="article-category">
+            <option value="News">News</option>
+            <option value="Engineering">Engineering</option>
+            <option value="Design">Design</option>
+            <option value="Concepts">Concepts</option>
+            <option value="Philosophy">Philosophy</option>
+        </select>
+        <select id="article-status">
+            <option value="published">Published</option>
+            <option value="draft">Draft</option>
+        </select>
+        <button class="btn btn-save" id="btn-save">Save Document</button>
+    </div>
+
+    <div class="editor-workspace">
+        <div id="toolbar-container">
+            <!-- Quill standard toolbar -->
+            <span class="ql-formats">
+                <select class="ql-header">
+                    <option value="1">Heading 1</option>
+                    <option value="2">Heading 2</option>
+                    <option value="3">Heading 3</option>
+                    <option selected>Normal</option>
+                </select>
+            </span>
+            <span class="ql-formats">
+                <button class="ql-bold"></button>
+                <button class="ql-italic"></button>
+                <button class="ql-underline"></button>
+            </span>
+            <span class="ql-formats">
+                <select class="ql-color"></select>
+                <select class="ql-background"></select>
+            </span>
+            <span class="ql-formats">
+                <button class="ql-list" value="ordered"></button>
+                <button class="ql-list" value="bullet"></button>
+                <select class="ql-align"></select>
+            </span>
+            <span class="ql-formats">
+                <button class="ql-blockquote"></button>
+                <button class="ql-link"></button>
+                <button class="ql-image"></button>
+            </span>
+            <span class="ql-formats">
+                <button class="ql-clean"></button>
+            </span>
+        </div>
+
+        <div class="page-scroll-container">
+            <div class="page-sheet">
+                <div class="settings-panel">
+                    <div class="form-group">
+                        <label>Slug (URL)</label>
+                        <input type="text" id="article-slug" placeholder="auto-generated-slug">
+                    </div>
+                    <div class="form-group">
+                        <label>Cover Image URL</label>
+                        <input type="text" id="article-cover" placeholder="/uploads/...">
+                    </div>
+                    <div class="form-group" style="grid-column: 1 / -1;">
+                        <label>Summary / Excerpt</label>
+                        <textarea id="article-summary" rows="2" placeholder="Brief summary for the card..."></textarea>
+                    </div>
+                </div>
+
+                <div id="quill-editor"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '';
+        let authToken = localStorage.getItem('veltron_admin_token');
+        if (!authToken) {
+            window.location.href = 'index.html';
+        }
+
+        let isDirty = false;
+        const urlParams = new URLSearchParams(window.location.search);
+        const editId = urlParams.get('id');
+
+        const titleInput = document.getElementById('article-title');
+        const slugInput = document.getElementById('article-slug');
+        const categoryInput = document.getElementById('article-category');
+        const statusInput = document.getElementById('article-status');
+        const coverInput = document.getElementById('article-cover');
+        const summaryInput = document.getElementById('article-summary');
+
+        // Setup Quill
+        const quill = new Quill('#quill-editor', {
+            theme: 'snow',
+            modules: { toolbar: '#toolbar-container' },
+            placeholder: 'Start writing your document here...'
+        });
+
+        // Dirty tracking
+        const setDirty = () => { isDirty = true; };
+        document.querySelectorAll('input, select, textarea').forEach(el => el.addEventListener('input', setDirty));
+        quill.on('text-change', setDirty);
+
+        // Auto-slug
+        titleInput.addEventListener('input', () => {
+            if (!editId && !isDirty) { // only auto-gen if new and hasn't been manually edited
+                slugInput.value = titleInput.value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+            }
+        });
+
+        window.addEventListener('beforeunload', (e) => {
+            if (isDirty) { e.preventDefault(); e.returnValue = ''; }
+        });
+
+        document.getElementById('btn-back').addEventListener('click', () => {
+            if (isDirty && !confirm('You have unsaved changes. Discard them?')) return;
+            window.location.href = 'index.html';
+        });
+
+        async function fetchAuth(url, options = {}) {
+            options.headers = {
+                ...options.headers,
+                'Authorization': `Bearer ${authToken}`,
+                'Content-Type': 'application/json'
+            };
+            const res = await fetch(`${API_BASE}${url}`, options);
+            if (res.status === 401 || res.status === 403) {
+                localStorage.removeItem('veltron_admin_token');
+                window.location.href = 'index.html';
+                throw new Error('Unauthorized');
+            }
+            return res.json();
+        }
+
+        async function loadArticle() {
+            if (!editId) return;
+            try {
+                const post = await fetchAuth(`/api/admin/journal/${editId}`);
+                if (!post) return;
+                titleInput.value = post.title || '';
+                slugInput.value = post.slug || '';
+                categoryInput.value = post.category || 'General';
+                statusInput.value = post.status || 'published';
+                coverInput.value = post.cover_image || '';
+                summaryInput.value = post.summary || '';
+                quill.root.innerHTML = post.content || '';
+                
+                // reset dirty state after load
+                setTimeout(() => { isDirty = false; }, 100);
+            } catch (err) {
+                console.error(err);
+                alert("Failed to load article.");
+            }
+        }
+
+        document.getElementById('btn-save').addEventListener('click', async () => {
+            const payload = {
+                title: titleInput.value,
+                slug: slugInput.value,
+                category: categoryInput.value,
+                status: statusInput.value,
+                cover_image: coverInput.value,
+                summary: summaryInput.value,
+                content: quill.root.innerHTML,
+                author: 'Boris Vlajnić'
+            };
+
+            if (!payload.title || !payload.content || payload.content === '<p><br></p>') {
+                alert('Title and Content are required.');
+                return;
+            }
+
+            try {
+                if (editId) {
+                    await fetchAuth(`/api/admin/journal/${editId}`, { method: 'PUT', body: JSON.stringify(payload) });
+                } else {
+                    const res = await fetchAuth('/api/admin/journal', { method: 'POST', body: JSON.stringify(payload) });
+                    if (res.id) {
+                        // Redirect to edit mode so subsequent saves update instead of insert
+                        isDirty = false;
+                        window.location.href = `editor.html?id=${res.id}`;
+                        return;
+                    }
+                }
+                isDirty = false;
+                alert('Document saved successfully!');
+            } catch (err) {
+                alert('Error saving document: ' + err.message);
+            }
+        });
+
+        // Quill Image Handler
+        quill.getModule('toolbar').addHandler('image', () => {
+            const input = document.createElement('input');
+            input.setAttribute('type', 'file');
+            input.setAttribute('accept', 'image/*');
+            input.click();
+            input.onchange = async () => {
+                const file = input.files[0];
+                if (!file) return;
+                
+                // Read base64
+                const reader = new FileReader();
+                reader.onload = async (e) => {
+                    try {
+                        const res = await fetchAuth('/api/admin/upload', {
+                            method: 'POST',
+                            body: JSON.stringify({ image: e.target.result, name: file.name })
+                        });
+                        if (res.success) {
+                            const range = quill.getSelection();
+                            quill.insertEmbed(range.index, 'image', res.url);
+                        } else {
+                            alert('Upload failed');
+                        }
+                    } catch (err) {
+                        alert('Upload failed');
+                    }
+                };
+                reader.readAsDataURL(file);
+            };
+        });
+
+        // Init
+        loadArticle();
+
+    </script>
+</body>
+</html>

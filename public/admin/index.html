@@ -486,7 +486,10 @@
             <div class="tab-content" id="tab-journal">
                 <div class="journal-header-bar">
                     <h3 style="font-size: 1.1rem; color: #ccc;">Veltron Journal Articles & Releases</h3>
-                    <button class="btn-submit" id="btn-new-article">+ Create New Article</button>
+                    <div style="display: flex; gap: 10px;">
+                        <button class="btn-secondary" onclick="window.location.href='editor.html'">⛶ Fullscreen Editor</button>
+                        <button class="btn-submit" id="btn-new-article">+ Quick Create</button>
+                    </div>
                 </div>
                 <div class="journal-grid" id="journal-list"></div>
             </div>
@@ -767,6 +770,7 @@
                         <p class="journal-card-summary">${escapeHtml(post.summary || '')}</p>
                         <div class="journal-card-meta">By ${escapeHtml(post.author || 'Veltron Team')} · ${new Date(post.created_at).toLocaleDateString()}</div>
                         <div class="msg-actions">
+                            <button class="btn-action" onclick="window.location.href='editor.html?id=${post.id}'" title="Open in Fullscreen Editor">⛶ Full</button>
                             <button class="btn-action btn-edit" onclick="editArticle(${post.id})">✏ Edit</button>
                             <button class="btn-action btn-danger" onclick="deleteArticle(${post.id})">🗑 Delete</button>
                         </div>
