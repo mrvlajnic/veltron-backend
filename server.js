@@ -9,7 +9,7 @@ const db = require('./db');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const JWT_SECRET = process.env.JWT_SECRET || 'veltron_super_secret_jwt_key_2026';
+const JWT_SECRET = process.env.JWT_SECRET || require('crypto').randomBytes(32).toString('hex');
 
 // Ensure uploads folder exists
 const uploadsDir = path.join(__dirname, 'public/uploads');

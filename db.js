@@ -40,7 +40,7 @@ loadData();
 
 // Seed default admin account
 const defaultUser = process.env.ADMIN_USERNAME || 'admin';
-const defaultPass = process.env.ADMIN_PASSWORD || 'veltronadmin2026';
+const defaultPass = process.env.ADMIN_PASSWORD || require('crypto').randomBytes(8).toString('hex');
 const existingAdmin = data.users.find(u => u.username === defaultUser);
 
 if (!existingAdmin) {
@@ -54,6 +54,10 @@ if (!existingAdmin) {
   });
   saveData();
   console.log(`🔑 Default admin account initialized: username="${defaultUser}"`);
+  if (!process.env.ADMIN_PASSWORD) {
+    console.log(`⚠️ WARNING: No ADMIN_PASSWORD provided. Auto-generated password: "${defaultPass}"`);
+    console.log(`⚠️ Please save this password or set ADMIN_PASSWORD in your .env file.`);
+  }
 }
 
 // Seed initial journal articles if empty
