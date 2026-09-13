@@ -108,15 +108,40 @@
         .ql-editor { padding: 0 !important; }
         .ql-editor.ql-blank::before { left: 0; font-style: normal; color: #9ca3af; }
 
-        .settings-panel {
+        .btn-settings { background: #374151; color: white; }
+        .btn-settings:hover { background: #4b5563; }
+
+        .settings-dropdown {
+            display: none;
+            position: absolute;
+            top: 100%;
+            right: 0;
+            margin-top: 15px;
             background: #fff;
-            padding: 15px;
-            margin-bottom: 20px;
-            border-radius: 4px;
+            padding: 20px;
+            border-radius: 6px;
             border: 1px solid #e5e7eb;
-            display: grid;
-            grid-template-columns: 1fr 1fr;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            width: 350px;
+            display: none; /* hidden by default */
+            flex-direction: column;
             gap: 15px;
+            z-index: 100;
+        }
+        .settings-dropdown.active {
+            display: flex;
+        }
+        .settings-dropdown::before {
+            content: '';
+            position: absolute;
+            top: -6px;
+            right: 40px;
+            width: 12px;
+            height: 12px;
+            background: #fff;
+            transform: rotate(45deg);
+            border-top: 1px solid #e5e7eb;
+            border-left: 1px solid #e5e7eb;
         }
         .form-group label { display: block; font-size: 0.8rem; color: #6b7280; font-weight: 600; margin-bottom: 5px; text-transform: uppercase; }
         .form-group input, .form-group select, .form-group textarea {
@@ -141,6 +166,25 @@
             <option value="published">Published</option>
             <option value="draft">Draft</option>
         </select>
+        
+        <div style="position: relative;">
+            <button class="btn btn-settings" id="btn-settings">⚙️ Settings</button>
+            <div class="settings-dropdown" id="settings-dropdown">
+                <div class="form-group">
+                    <label>Slug (URL)</label>
+                    <input type="text" id="article-slug" placeholder="auto-generated-slug">
+                </div>
+                <div class="form-group">
+                    <label>Cover Image URL</label>
+                    <input type="text" id="article-cover" placeholder="/uploads/...">
+                </div>
+                <div class="form-group">
+                    <label>Summary / Excerpt</label>
+                    <textarea id="article-summary" rows="3" placeholder="Brief summary for the card..."></textarea>
+                </div>
+            </div>
+        </div>
+
         <button class="btn btn-save" id="btn-save">Save Document</button>
     </div>
 
@@ -185,20 +229,6 @@
 
         <div class="page-scroll-container">
             <div class="page-sheet">
-                <div class="settings-panel">
-                    <div class="form-group">
-                        <label>Slug (URL)</label>
-                        <input type="text" id="article-slug" placeholder="auto-generated-slug">
-                    </div>
-                    <div class="form-group">
-                        <label>Cover Image URL</label>
-                        <input type="text" id="article-cover" placeholder="/uploads/...">
-                    </div>
-                    <div class="form-group" style="grid-column: 1 / -1;">
-                        <label>Summary / Excerpt</label>
-                        <textarea id="article-summary" rows="2" placeholder="Brief summary for the card..."></textarea>
-                    </div>
-                </div>
 
                 <div id="quill-editor"></div>
             </div>
@@ -264,6 +294,20 @@
         document.getElementById('btn-back').addEventListener('click', () => {
             if (isDirty && !confirm('You have unsaved changes. Discard them?')) return;
             window.location.href = 'index.html';
+        });
+
+        // Settings Dropdown Toggle
+        document.getElementById('btn-settings').addEventListener('click', () => {
+            document.getElementById('settings-dropdown').classList.toggle('active');
+        });
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            const btn = document.getElementById('btn-settings');
+            const dropdown = document.getElementById('settings-dropdown');
+            if (e.target !== btn && !btn.contains(e.target) && e.target !== dropdown && !dropdown.contains(e.target)) {
+                dropdown.classList.remove('active');
+            }
         });
 
         async function fetchAuth(url, options = {}) {
