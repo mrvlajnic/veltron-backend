@@ -28,6 +28,44 @@ function escapeHtml(str) {
     return String(str || '').replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
+app.get('/sitemap.xml', async (req, res, next) => {
+    const host = req.hostname || '';
+    if (host === 'journal.veltroncars.com' || host === 'localhost' || host.includes('onrender')) {
+        try {
+            const posts = await db.JournalPost.find({ status: 'published' }).sort({ created_at: -1 });
+            
+            let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
+            xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n';
+            
+            // Add root journal page
+            xml += '  <url>\n';
+            xml += '    <loc>https://journal.veltroncars.com/</loc>\n';
+            xml += '    <changefreq>daily</changefreq>\n';
+            xml += '    <priority>1.0</priority>\n';
+            xml += '  </url>\n';
+            
+            // Add individual posts
+            posts.forEach(post => {
+                xml += '  <url>\n';
+                xml += `    <loc>https://journal.veltroncars.com/${post.slug}</loc>\n`;
+                xml += `    <lastmod>${new Date(post.created_at).toISOString()}</lastmod>\n`;
+                xml += '    <changefreq>monthly</changefreq>\n';
+                xml += '    <priority>0.8</priority>\n';
+                xml += '  </url>\n';
+            });
+            
+            xml += '</urlset>';
+            
+            res.header('Content-Type', 'application/xml');
+            return res.send(xml);
+        } catch(err) {
+            console.error("Sitemap Error:", err);
+            return res.status(500).send("Error generating sitemap.");
+        }
+    }
+    next();
+});
+
 app.get('/', async (req, res, next) => {
     // Only serve SSR if the request is for the journal subdomain (or local dev)
     const host = req.hostname || '';
