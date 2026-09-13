@@ -1,0 +1,43 @@
+{
+  "messages": [],
+  "journal_posts": [
+    {
+      "id": 1,
+      "title": "Veltron Auto Positioned Alongside Pioneers Yugo and FAP on Autolooks",
+      "slug": "veltron-auto-autolooks-recognition",
+      "category": "News",
+      "cover_image": "https://veltroncars.com/Assets/img/Render2.webp",
+      "summary": "Autolooks has placed Veltron Auto in the center stage under the Serbian flag alongside historic national automotive legends Yugo and FAP.",
+      "content": "## A Historic Context for a Next-Generation Vision\n\nVeltron Auto has received prominent recognition on the global automotive platform **Autolooks**, highlighted as an emerging independent automotive brand and R&D studio positioned alongside historic domestic icons **Yugo** and **FAP** under the Serbian flag.\n\n### Defining the Modern Driver's Car\n\nWhile historic manufacturing focused on utilitarian industrial mobility, Veltron represents the contemporary synthesis of **Emotional Aerodynamics**, proprietary **V-Force propulsion**, and intuitive human-centric cockpit software (**SkyUI**).\n\n> \"Our goal is not simply to look back at heritage, but to forge forward into the future of automotive styling and mechanical intelligence from our studio in Belgrade.\"\n\nStay tuned for ongoing developments as our digital engineering and physical validation phases progress.",
+      "author": "Boris Vlajnić",
+      "status": "published",
+      "created_at": "2026-09-12T22:23:19.775Z",
+      "updated_at": "2026-09-12T22:23:19.775Z"
+    },
+    {
+      "id": 2,
+      "title": "The Philosophy of Emotional Aerodynamics: Sculpting the V1 SportLine",
+      "slug": "philosophy-of-emotional-aerodynamics-v1",
+      "category": "Design",
+      "cover_image": "https://veltroncars.com/Assets/img/Render2.webp",
+      "summary": "Exploring how functional airflow channels, athletic sedan proportions, and pure aesthetic emotion converge in the Veltron V1 SportLine.",
+      "content": "## Form Follows Motion\n\nIn modern vehicle design, aerodynamics is too frequently treated as a sterile mathematical compromise—resulting in generic, interchangeable silhouettes.\n\nWith the **Veltron V1 SportLine**, our design studio set out to prove that drag reduction and downforce management can coexist with striking emotional presence.\n\n### Key Design Highlights\n\n* **Low-slung athletic silhouette:** Balancing high-speed laminar stability with classic sedan elegance.\n* **Integrated functional intakes:** Routing cooling air to powertrain components while sculpting muscular surface tension.\n* **SkyUI seamless cockpit:** An interior crafted to eliminate digital noise and center every control around the driver.\n\n*Read more technical updates in forthcoming Veltron Journal publications.*",
+      "author": "Boris Vlajnić",
+      "status": "published",
+      "created_at": "2026-09-11T22:23:19.775Z",
+      "updated_at": "2026-09-11T22:23:19.775Z"
+    }
+  ],
+  "users": [
+    {
+      "id": 1,
+      "username": "admin",
+      "password_hash": "$2b$10$FbhAlfgjtIO.lPAH0FhhuOvJFxKRSQfi/f.tTuZdX8OC1kSSAyJ1W",
+      "role": "admin",
+      "created_at": "2026-09-12T22:09:10.948Z"
+    }
+  ],
+  "next_message_id": 1,
+  "next_journal_id": 3,
+  "next_user_id": 2
+}

@@ -21,6 +21,137 @@ app.use(cors());
 app.use(express.json({ limit: '15mb' }));
 app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 
+// ==========================================================================
+// SSR: JOURNAL (Rendered HTML)
+// ==========================================================================
+function escapeHtml(str) {
+    return String(str || '').replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+app.get('/', async (req, res, next) => {
+    // Only serve SSR if the request is for the journal subdomain (or local dev)
+    const host = req.hostname || '';
+    if (host === 'journal.veltroncars.com' || host === 'localhost' || host.includes('onrender')) {
+        try {
+            const posts = await db.JournalPost.find({ status: 'published' }).sort({ created_at: -1 });
+            let template = fs.readFileSync(path.join(__dirname, 'views/journal.html'), 'utf-8');
+            
+            const meta = `
+    <title>Veltron Journal | Automotive Design, Technology & Motion</title>
+    <meta name="description" content="Explore official news, design deep-dives, and engineering releases from Veltron Auto.">
+            `;
+            template = template.replace('<!-- INJECT_META -->', meta);
+            template = template.replace('<!-- INJECT_GRID_STYLE -->', 'display: grid;');
+            template = template.replace('<!-- INJECT_FILTERS_STYLE -->', 'display: flex;');
+            template = template.replace('<!-- INJECT_HERO_STYLE -->', 'display: block;');
+            template = template.replace('<!-- INJECT_ARTICLE_READER -->', '');
+
+            let cardsHtml = posts.map(article => {
+                let img = article.cover_image || 'https://veltroncars.com/Assets/img/Render2.webp';
+                if (img.startsWith('/uploads')) img = `${req.protocol}://${req.get('host')}${img}`;
+                
+                return `
+                <a href="/${article.slug}" class="journal-item-card" style="text-decoration: none; color: inherit; display: flex; flex-direction: column;">
+                    <div class="journal-item-cover-wrapper">
+                        <img src="${img}" alt="${escapeHtml(article.title)}" class="journal-item-cover" loading="lazy" decoding="async">
+                    </div>
+                    <div class="journal-item-content">
+                        <div class="journal-item-meta">
+                            <span class="journal-cat-badge">${escapeHtml(article.category || 'Release')}</span>
+                            <span class="journal-item-date">${new Date(article.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}</span>
+                        </div>
+                        <h2 class="journal-item-title">${escapeHtml(article.title)}</h2>
+                        <p class="journal-item-summary">${escapeHtml(article.summary || '')}</p>
+                        <div class="journal-read-link">
+                            Read Story <span>→</span>
+                        </div>
+                    </div>
+                </a>
+                `;
+            }).join('');
+            
+            if (posts.length === 0) {
+                cardsHtml = '<div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px; color: #888;">No releases available.</div>';
+            }
+            
+            template = template.replace('<!-- INJECT_CARDS -->', cardsHtml);
+            return res.send(template);
+        } catch(err) {
+            console.error("SSR Error:", err);
+            return res.status(500).send("Error rendering journal.");
+        }
+    }
+    next();
+});
+
+app.get('/:slug', async (req, res, next) => {
+    const host = req.hostname || '';
+    if (host === 'journal.veltroncars.com' || host === 'localhost' || host.includes('onrender')) {
+        // Skip API or static paths
+        if (req.params.slug.startsWith('api') || req.params.slug.startsWith('uploads') || req.params.slug.startsWith('admin')) return next();
+        
+        try {
+            const post = await db.JournalPost.findOne({ slug: req.params.slug });
+            if (!post || (post.status !== 'published')) {
+                return next(); // pass to 404
+            }
+            
+            let template = fs.readFileSync(path.join(__dirname, 'views/journal.html'), 'utf-8');
+            
+            let img = post.cover_image || 'https://veltroncars.com/Assets/img/Render2.webp';
+            if (img.startsWith('/uploads')) img = `${req.protocol}://${req.get('host')}${img}`;
+            
+            const meta = `
+    <title>${escapeHtml(post.title)} | Veltron Journal</title>
+    <meta name="description" content="${escapeHtml(post.summary)}">
+    <meta property="og:title" content="${escapeHtml(post.title)}">
+    <meta property="og:description" content="${escapeHtml(post.summary)}">
+    <meta property="og:image" content="${img}">
+    <meta name="twitter:title" content="${escapeHtml(post.title)}">
+    <meta name="twitter:description" content="${escapeHtml(post.summary)}">
+    <meta name="twitter:image" content="${img}">
+            `;
+            template = template.replace('<!-- INJECT_META -->', meta);
+            template = template.replace('<!-- INJECT_GRID_STYLE -->', 'display: none;');
+            template = template.replace('<!-- INJECT_FILTERS_STYLE -->', 'display: none;');
+            template = template.replace('<!-- INJECT_HERO_STYLE -->', 'display: none;');
+            template = template.replace('<!-- INJECT_CARDS -->', '');
+            
+            let content = post.content || '';
+            content = content.replace(/\/uploads\//g, `${req.protocol}://${req.get('host')}/uploads/`);
+            
+            let imgDisplay = post.cover_image ? 'block' : 'none';
+            
+            const readerHtml = `
+            <article class="article-reader" id="article-reader" style="display: block;">
+                <a href="/" class="btn-back-journal" style="text-decoration:none; display:inline-block; margin-bottom: 20px;">← Back to all releases</a>
+                <div class="article-header">
+                    <span class="journal-cat-badge">${escapeHtml(post.category || 'Release').toUpperCase()}</span>
+                    <h1 class="article-title">${escapeHtml(post.title)}</h1>
+                    <div class="article-byline">
+                        <span>By <strong style="color: #fff;">${escapeHtml(post.author || 'Boris Vlajnić')}</strong></span>
+                        <span>•</span>
+                        <span>${new Date(post.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                    </div>
+                </div>
+                <img class="article-featured-img" src="${img}" style="display: ${imgDisplay};">
+                <div class="article-content-body">${content}</div>
+                <div style="margin-top: 50px; padding-top: 30px; border-top: 1px solid #222;">
+                    <a href="/" class="btn-back-journal" style="text-decoration:none; display:inline-block;">← Back to all releases</a>
+                </div>
+            </article>
+            `;
+            
+            template = template.replace('<!-- INJECT_ARTICLE_READER -->', readerHtml);
+            return res.send(template);
+        } catch(err) {
+            console.error("SSR Article Error:", err);
+            return res.status(500).send("Error rendering article.");
+        }
+    }
+    next();
+});
+
 // Serve static frontend, uploads & admin UI
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/uploads', express.static(uploadsDir));

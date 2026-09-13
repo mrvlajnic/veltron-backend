@@ -23,7 +23,7 @@ const migrate = async () => {
     const data = JSON.parse(raw);
 
     console.log('Connecting to MongoDB...');
-    await mongoose.connect(uri);
+    await mongoose.connect(uri, { serverSelectionTimeoutMS: 5000, family: 4 });
     console.log('✅ Connected to MongoDB');
 
     console.log('Clearing existing data...');
