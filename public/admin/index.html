@@ -697,9 +697,9 @@
                     </div>
                     <div class="msg-body">${escapeHtml(msg.message)}</div>
                     <div class="msg-actions">
-                        ${msg.status === 'unread' ? `<button class="btn-action" onclick="markAsRead(${msg.id})">✓ Mark Read</button>` : ''}
-                        <button class="btn-action btn-archive" onclick="archiveMsg(${msg.id})">📦 Archive</button>
-                        <button class="btn-action btn-danger" onclick="deleteMsg(${msg.id})">🗑 Delete</button>
+                        ${msg.status === 'unread' ? `<button class="btn-action" onclick="markAsRead('${msg.id}')">✓ Mark Read</button>` : ''}
+                        <button class="btn-action btn-archive" onclick="archiveMsg('${msg.id}')">📦 Archive</button>
+                        <button class="btn-action btn-danger" onclick="deleteMsg('${msg.id}')">🗑 Delete</button>
                     </div>
                 </div>
             `).join('');
@@ -724,8 +724,8 @@
                     </div>
                     <div class="msg-body">${escapeHtml(msg.message)}</div>
                     <div class="msg-actions">
-                        <button class="btn-action" onclick="unarchiveMsg(${msg.id})">↩ Restore to Inbox</button>
-                        <button class="btn-action btn-danger" onclick="deleteMsg(${msg.id})">🗑 Delete</button>
+                        <button class="btn-action" onclick="unarchiveMsg('${msg.id}')">↩ Restore to Inbox</button>
+                        <button class="btn-action btn-danger" onclick="deleteMsg('${msg.id}')">🗑 Delete</button>
                     </div>
                 </div>
             `).join('');
@@ -771,8 +771,8 @@
                         <div class="journal-card-meta">By ${escapeHtml(post.author || 'Veltron Team')} · ${new Date(post.created_at).toLocaleDateString()}</div>
                         <div class="msg-actions">
                             <button class="btn-action" onclick="window.location.href='editor.html?id=${post.id}'" title="Open in Fullscreen Editor">⛶ Full</button>
-                            <button class="btn-action btn-edit" onclick="editArticle(${post.id})">✏ Edit</button>
-                            <button class="btn-action btn-danger" onclick="deleteArticle(${post.id})">🗑 Delete</button>
+                            <button class="btn-action btn-edit" onclick="editArticle('${post.id}')">✏ Edit</button>
+                            <button class="btn-action btn-danger" onclick="deleteArticle('${post.id}')">🗑 Delete</button>
                         </div>
                     </div>
                 </div>
