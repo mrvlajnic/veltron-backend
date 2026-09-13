@@ -846,7 +846,7 @@
             modalTitle.textContent = 'Create New Article';
             editIdInput.value = '';
             document.getElementById('article-form').reset();
-            quill.root.innerHTML = '';
+            quill.setText('');
             coverPreview.style.display = 'none';
             authorInput.value = 'Boris Vlajnić';
             isDirty = false;
@@ -972,7 +972,7 @@
             categoryInput.value = post.category || 'General';
             coverInput.value = post.cover_image || '';
             summaryInput.value = post.summary || '';
-            quill.root.innerHTML = post.content || '';
+            quill.clipboard.dangerouslyPasteHTML(post.content || '');
             authorInput.value = post.author || 'Boris Vlajnić';
             statusInput.value = post.status || 'published';
 
