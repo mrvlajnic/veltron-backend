@@ -25,7 +25,7 @@ app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/uploads', express.static(uploadsDir));
 
-// 🔒 Anti-Bot Rate Limiting (max 5 contact submissions per 10 min per IP)
+// 🔒 Anti-Bot Rate Limiting
 const contactLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
   max: 5,
@@ -44,27 +44,23 @@ function authenticateAdmin(req, res, next) {
   }
 
   jwt.verify(token, JWT_SECRET, (err, user) => {
-    if (err) {
-      return res.status(403).json({ error: 'Invalid or expired token.' });
-    }
+    if (err) return res.status(403).json({ error: 'Invalid or expired token.' });
     req.user = user;
     next();
   });
 }
 
 // ==========================================================================
-// 1. PUBLIC CONTACT FORM API (Anti-Bot + Rate Limited)
+// 1. PUBLIC CONTACT FORM API
 // ==========================================================================
-app.post('/api/contact', contactLimiter, (req, res) => {
+app.post('/api/contact', contactLimiter, async (req, res) => {
   const { name, email, message, website_hp } = req.body;
 
-  // 🕵️ Honeypot Trap
   if (website_hp && website_hp.trim() !== '') {
     console.warn(`🚨 Bot detected via honeypot trap from IP: ${req.ip}`);
     return res.json({ success: true, message: 'Message sent successfully!' });
   }
 
-  // Validation
   if (!name || !email || !message) {
     return res.status(400).json({ error: 'Please fill in all required fields (Name, Email, Message).' });
   }
@@ -80,19 +76,19 @@ app.post('/api/contact', contactLimiter, (req, res) => {
 
   const clientIp = req.ip || req.headers['x-forwarded-for'] || 'unknown';
 
-  db.run(
-    'INSERT INTO messages (name, email, message, ip_address) VALUES (?, ?, ?, ?)',
-    [name.trim(), email.trim(), message.trim(), clientIp],
-    function (err) {
-      if (err) {
-        console.error('Database insertion error:', err);
-        return res.status(500).json({ error: 'Failed to save message. Please try again later.' });
-      }
-
-      console.log(`📩 New message saved [ID: ${this.lastID}] from ${email}`);
-      res.json({ success: true, message: 'Thank you! Your message has been received.' });
-    }
-  );
+  try {
+    const newMessage = await db.Message.create({
+      name: name.trim(),
+      email: email.trim(),
+      message: message.trim(),
+      ip_address: clientIp
+    });
+    console.log(`📩 New message saved [ID: ${newMessage._id}] from ${email}`);
+    res.json({ success: true, message: 'Thank you! Your message has been received.' });
+  } catch (err) {
+    console.error('Database insertion error:', err);
+    res.status(500).json({ error: 'Failed to save message. Please try again later.' });
+  }
 });
 
 app.post('/api/messages', contactLimiter, (req, res) => {
@@ -101,222 +97,192 @@ app.post('/api/messages', contactLimiter, (req, res) => {
 });
 
 // ==========================================================================
-// 2. PUBLIC JOURNAL API (Read Published Articles)
+// 2. PUBLIC JOURNAL API
 // ==========================================================================
-app.get('/api/journal', (req, res) => {
-  db.all("SELECT * FROM journal_posts WHERE status = 'published' ORDER BY created_at DESC", (err, posts) => {
-    if (err) return res.status(500).json({ error: err.message });
+app.get('/api/journal', async (req, res) => {
+  try {
+    const posts = await db.JournalPost.find({ status: 'published' }).sort({ created_at: -1 });
     res.json(posts || []);
-  });
+  } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
-app.get('/api/journal/:slug', (req, res) => {
-  const { slug } = req.params;
-  db.get('SELECT * FROM journal_posts WHERE slug = ?', [slug], (err, post) => {
-    if (err) return res.status(500).json({ error: err.message });
+app.get('/api/journal/:slug', async (req, res) => {
+  try {
+    const post = await db.JournalPost.findOne({ slug: req.params.slug });
     if (!post || (post.status !== 'published' && req.query.preview !== 'true')) {
       return res.status(404).json({ error: 'Article not found.' });
     }
     res.json(post);
-  });
+  } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
 // ==========================================================================
 // 3. ADMIN AUTHENTICATION
 // ==========================================================================
-app.post('/api/admin/login', (req, res) => {
+app.post('/api/admin/login', async (req, res) => {
   const { username, password } = req.body;
-
   if (!username || !password) {
     return res.status(400).json({ error: 'Username and password are required.' });
   }
 
-  db.get('SELECT * FROM users WHERE username = ?', [username], (err, user) => {
-    if (err || !user) {
-      return res.status(401).json({ error: 'Invalid credentials.' });
-    }
+  try {
+    const user = await db.User.findOne({ username });
+    if (!user) return res.status(401).json({ error: 'Invalid credentials.' });
 
     const isValid = bcrypt.compareSync(password, user.password_hash);
-    if (!isValid) {
-      return res.status(401).json({ error: 'Invalid credentials.' });
-    }
+    if (!isValid) return res.status(401).json({ error: 'Invalid credentials.' });
 
     const token = jwt.sign(
-      { id: user.id, username: user.username, role: user.role },
+      { id: user._id, username: user.username, role: user.role },
       JWT_SECRET,
       { expiresIn: '24h' }
     );
 
     res.json({ success: true, token, username: user.username });
-  });
+  } catch (err) {
+    res.status(500).json({ error: 'Login error.' });
+  }
 });
 
 // ==========================================================================
-// 4. ADMIN DASHBOARD & MESSAGES API (Protected)
+// 4. ADMIN DASHBOARD & MESSAGES API
 // ==========================================================================
-app.get('/api/admin/stats', authenticateAdmin, (req, res) => {
-  db.get(
-    `SELECT 
-      COUNT(*) as total,
-      SUM(CASE WHEN is_archived = 0 THEN 1 ELSE 0 END) as active,
-      SUM(CASE WHEN status = 'unread' AND is_archived = 0 THEN 1 ELSE 0 END) as unread,
-      SUM(CASE WHEN is_archived = 1 THEN 1 ELSE 0 END) as archived
-     FROM messages`,
-    (err, msgStats) => {
-      if (err) return res.status(500).json({ error: err.message });
-      
-      db.get('SELECT COUNT(*) as journal_count FROM journal_posts', (err2, journalStats) => {
-        res.json({
-          messages: msgStats || { total: 0, active: 0, unread: 0, archived: 0 },
-          journal: journalStats || { journal_count: 0 }
-        });
-      });
-    }
-  );
+app.get('/api/admin/stats', authenticateAdmin, async (req, res) => {
+  try {
+    const total = await db.Message.countDocuments();
+    const active = await db.Message.countDocuments({ is_archived: 0 });
+    const unread = await db.Message.countDocuments({ status: 'unread', is_archived: 0 });
+    const archived = await db.Message.countDocuments({ is_archived: 1 });
+    const journal_count = await db.JournalPost.countDocuments();
+
+    res.json({
+      messages: { total, active, unread, archived },
+      journal: { journal_count }
+    });
+  } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
-app.get('/api/admin/messages', authenticateAdmin, (req, res) => {
-  db.all('SELECT * FROM messages WHERE is_archived = 0 ORDER BY created_at DESC', (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
+app.get('/api/admin/messages', authenticateAdmin, async (req, res) => {
+  try {
+    const rows = await db.Message.find({ is_archived: 0 }).sort({ created_at: -1 });
     res.json(rows);
-  });
+  } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
-app.get('/api/admin/archived', authenticateAdmin, (req, res) => {
-  db.all('SELECT * FROM messages WHERE is_archived = 1 ORDER BY archived_at DESC', (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
+app.get('/api/admin/archived', authenticateAdmin, async (req, res) => {
+  try {
+    const rows = await db.Message.find({ is_archived: 1 }).sort({ archived_at: -1 });
     res.json(rows);
-  });
+  } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
-app.post('/api/admin/messages/:id/archive', authenticateAdmin, (req, res) => {
-  const { id } = req.params;
-  const now = new Date().toISOString();
-  db.run('UPDATE messages SET is_archived = 1, archived_at = ? WHERE id = ?', [now, id], function (err) {
-    if (err) return res.status(500).json({ error: err.message });
+app.post('/api/admin/messages/:id/archive', authenticateAdmin, async (req, res) => {
+  try {
+    await db.Message.findByIdAndUpdate(req.params.id, { is_archived: 1, archived_at: new Date() });
     res.json({ success: true, message: 'Message moved to archive.' });
-  });
+  } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
-app.post('/api/admin/messages/:id/unarchive', authenticateAdmin, (req, res) => {
-  const { id } = req.params;
-  db.run('UPDATE messages SET is_archived = 0, archived_at = NULL WHERE id = ?', [id], function (err) {
-    if (err) return res.status(500).json({ error: err.message });
+app.post('/api/admin/messages/:id/unarchive', authenticateAdmin, async (req, res) => {
+  try {
+    await db.Message.findByIdAndUpdate(req.params.id, { is_archived: 0, $unset: { archived_at: 1 } });
     res.json({ success: true, message: 'Message restored to inbox.' });
-  });
+  } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
-app.post('/api/admin/messages/:id/status', authenticateAdmin, (req, res) => {
-  const { id } = req.params;
-  const { status } = req.body;
-  db.run('UPDATE messages SET status = ? WHERE id = ?', [status || 'read', id], function (err) {
-    if (err) return res.status(500).json({ error: err.message });
+app.post('/api/admin/messages/:id/status', authenticateAdmin, async (req, res) => {
+  try {
+    await db.Message.findByIdAndUpdate(req.params.id, { status: req.body.status || 'read' });
     res.json({ success: true });
-  });
+  } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
-app.delete('/api/admin/messages/:id', authenticateAdmin, (req, res) => {
-  const { id } = req.params;
-  db.run('DELETE FROM messages WHERE id = ?', [id], function (err) {
-    if (err) return res.status(500).json({ error: err.message });
+app.delete('/api/admin/messages/:id', authenticateAdmin, async (req, res) => {
+  try {
+    await db.Message.findByIdAndDelete(req.params.id);
     res.json({ success: true, message: 'Message deleted.' });
-  });
+  } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
 // ==========================================================================
-// 5. ADMIN JOURNAL MANAGEMENT API (Create, Edit, Delete, Upload Images)
+// 5. ADMIN JOURNAL MANAGEMENT API
 // ==========================================================================
-app.get('/api/admin/journal', authenticateAdmin, (req, res) => {
-  db.all('SELECT * FROM journal_posts ORDER BY created_at DESC', (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
+app.get('/api/admin/journal', authenticateAdmin, async (req, res) => {
+  try {
+    const rows = await db.JournalPost.find().sort({ created_at: -1 });
     res.json(rows);
-  });
+  } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
-app.get('/api/admin/journal/:id', authenticateAdmin, (req, res) => {
-  const { id } = req.params;
-  db.get('SELECT * FROM journal_posts WHERE id = ?', [id], (err, post) => {
-    if (err) return res.status(500).json({ error: err.message });
+app.get('/api/admin/journal/:id', authenticateAdmin, async (req, res) => {
+  try {
+    const post = await db.JournalPost.findById(req.params.id);
     if (!post) return res.status(404).json({ error: 'Post not found.' });
     res.json(post);
-  });
+  } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
-app.post('/api/admin/journal', authenticateAdmin, (req, res) => {
+app.post('/api/admin/journal', authenticateAdmin, async (req, res) => {
   const { title, slug, category, cover_image, summary, content, author, status } = req.body;
-  if (!title || !content) {
-    return res.status(400).json({ error: 'Title and Content are required.' });
-  }
+  if (!title || !content) return res.status(400).json({ error: 'Title and Content are required.' });
 
   const postSlug = slug && slug.trim() !== '' 
     ? slug.trim().toLowerCase().replace(/[^a-z0-9-]+/g, '-')
     : title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 
-  db.run(
-    'INSERT INTO journal_posts (title, slug, category, cover_image, summary, content, author, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    [
-      title.trim(),
-      postSlug,
-      category || 'General',
-      cover_image || '',
-      summary || '',
+  try {
+    const post = await db.JournalPost.create({
+      title: title.trim(),
+      slug: postSlug,
+      category: category || 'General',
+      cover_image: cover_image || '',
+      summary: summary || '',
       content,
-      author || 'Veltron Team',
-      status || 'published'
-    ],
-    function (err) {
-      if (err) return res.status(500).json({ error: err.message });
-      res.json({ success: true, id: this.lastID, message: 'Journal article published successfully.' });
-    }
-  );
+      author: author || 'Veltron Team',
+      status: status || 'published'
+    });
+    res.json({ success: true, id: post._id, message: 'Journal article published successfully.' });
+  } catch(err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-app.put('/api/admin/journal/:id', authenticateAdmin, (req, res) => {
-  const { id } = req.params;
+app.put('/api/admin/journal/:id', authenticateAdmin, async (req, res) => {
   const { title, slug, category, cover_image, summary, content, author, status } = req.body;
-
-  if (!title || !content) {
-    return res.status(400).json({ error: 'Title and Content are required.' });
-  }
+  if (!title || !content) return res.status(400).json({ error: 'Title and Content are required.' });
 
   const postSlug = slug && slug.trim() !== ''
     ? slug.trim().toLowerCase().replace(/[^a-z0-9-]+/g, '-')
     : title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 
-  db.run(
-    'UPDATE journal_posts SET title = ?, slug = ?, category = ?, cover_image = ?, summary = ?, content = ?, author = ?, status = ? WHERE id = ?',
-    [
-      title.trim(),
-      postSlug,
-      category || 'General',
-      cover_image || '',
-      summary || '',
+  try {
+    await db.JournalPost.findByIdAndUpdate(req.params.id, {
+      title: title.trim(),
+      slug: postSlug,
+      category: category || 'General',
+      cover_image: cover_image || '',
+      summary: summary || '',
       content,
-      author || 'Veltron Team',
-      status || 'published',
-      id
-    ],
-    function (err) {
-      if (err) return res.status(500).json({ error: err.message });
-      res.json({ success: true, message: 'Journal article updated.' });
-    }
-  );
+      author: author || 'Veltron Team',
+      status: status || 'published'
+    });
+    res.json({ success: true, message: 'Journal article updated.' });
+  } catch(err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-app.delete('/api/admin/journal/:id', authenticateAdmin, (req, res) => {
-  const { id } = req.params;
-  db.run('DELETE FROM journal_posts WHERE id = ?', [id], function (err) {
-    if (err) return res.status(500).json({ error: err.message });
+app.delete('/api/admin/journal/:id', authenticateAdmin, async (req, res) => {
+  try {
+    await db.JournalPost.findByIdAndDelete(req.params.id);
     res.json({ success: true, message: 'Journal article deleted.' });
-  });
+  } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
-// 📸 Image Upload Endpoint (Base64 -> Saved File)
+// 📸 Image Upload Endpoint
 app.post('/api/admin/upload', authenticateAdmin, (req, res) => {
   const { image, name } = req.body;
-  if (!image) {
-    return res.status(400).json({ error: 'No image data provided.' });
-  }
+  if (!image) return res.status(400).json({ error: 'No image data provided.' });
 
   try {
     const matches = image.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
@@ -362,24 +328,21 @@ function startKeepAlive() {
     console.log('💡 Local environment detected (RENDER_EXTERNAL_URL not set).');
     return;
   }
-
   const pingUrl = `${externalUrl}/api/ping`;
   const PING_INTERVAL = 12 * 60 * 1000;
-
-  console.log(`⏰ Keep-alive self-ping activated for ${pingUrl} (Every 12 mins)`);
-
   setInterval(() => {
     const protocol = pingUrl.startsWith('https') ? https : http;
-    protocol.get(pingUrl, (res) => {
-      console.log(`🏓 Self-ping response: HTTP ${res.statusCode} at ${new Date().toLocaleTimeString()}`);
-    }).on('error', (err) => {
-      console.warn('⚠️ Self-ping error:', err.message);
-    });
+    protocol.get(pingUrl, (res) => {}).on('error', (err) => console.warn('⚠️ Self-ping error:', err.message));
   }, PING_INTERVAL);
 }
 
-app.listen(PORT, () => {
-  console.log(`🚀 Veltron Backend active on http://localhost:${PORT}`);
-  console.log(`🔐 Admin Panel: http://localhost:${PORT}/admin`);
-  startKeepAlive();
+// Connect to MongoDB, then start server
+db.connectDB().then(() => {
+  app.listen(PORT, () => {
+    console.log(`🚀 Veltron Backend active on http://localhost:${PORT}`);
+    console.log(`🔐 Admin Panel: http://localhost:${PORT}/admin`);
+    startKeepAlive();
+  });
+}).catch(err => {
+  console.error("Failed to connect to database. Server not started.");
 });
