@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -5,6 +6,8 @@ const fs = require('fs');
 const rateLimit = require('express-rate-limit');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const helmet = require('helmet');
+const sanitizeHtml = require('sanitize-html');
 const db = require('./db');
 
 const app = express();
@@ -17,7 +20,21 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-app.use(cors());
+app.use(cors({
+  origin: [
+    'https://veltroncars.com',
+    'https://www.veltroncars.com',
+    'https://journal.veltroncars.com',
+    'https://veltron-backend.onrender.com',
+    'http://localhost:5000',
+    'http://127.0.0.1:5000'
+  ],
+  credentials: true
+}));
+app.use(helmet({
+  contentSecurityPolicy: false,  // Disabled because admin panel uses inline scripts/styles
+  crossOriginEmbedderPolicy: false
+}));
 app.use(express.json({ limit: '15mb' }));
 app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 
@@ -156,6 +173,16 @@ app.get('/:slug', async (req, res, next) => {
             template = template.replace('<!-- INJECT_CARDS -->', '');
             
             let content = post.content || '';
+            content = sanitizeHtml(content, {
+              allowedTags: sanitizeHtml.defaults.allowedTags.concat(['img', 'h1', 'h2', 'h3', 'figure', 'figcaption', 'iframe']),
+              allowedAttributes: {
+                ...sanitizeHtml.defaults.allowedAttributes,
+                img: ['src', 'alt', 'title', 'width', 'height', 'loading', 'decoding', 'class', 'style'],
+                iframe: ['src', 'width', 'height', 'frameborder', 'allowfullscreen'],
+                '*': ['class', 'style']
+              },
+              allowedSchemes: ['http', 'https', 'data']
+            });
             content = content.replace(/\/uploads\//g, `${req.protocol}://${req.get('host')}/uploads/`);
             
             let imgDisplay = post.cover_image ? 'block' : 'none';
@@ -278,17 +305,23 @@ app.get('/api/journal', async (req, res) => {
 app.get('/api/journal/:slug', async (req, res) => {
   try {
     const post = await db.JournalPost.findOne({ slug: req.params.slug });
-    if (!post || (post.status !== 'published' && req.query.preview !== 'true')) {
+    if (!post || post.status !== 'published') {
       return res.status(404).json({ error: 'Article not found.' });
     }
     res.json(post);
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
-// ==========================================================================
-// 3. ADMIN AUTHENTICATION
-// ==========================================================================
-app.post('/api/admin/login', async (req, res) => {
+// 🔒 Anti-Brute-Force Rate Limiting for Login
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: 'Too many login attempts. Please wait 15 minutes before trying again.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+app.post('/api/admin/login', loginLimiter, async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) {
     return res.status(400).json({ error: 'Username and password are required.' });
@@ -449,6 +482,9 @@ app.delete('/api/admin/journal/:id', authenticateAdmin, async (req, res) => {
 });
 
 // 📸 Image Upload Endpoint
+const ALLOWED_IMAGE_TYPES = ['png', 'jpg', 'jpeg', 'webp', 'gif'];
+const MAX_UPLOAD_SIZE = 5 * 1024 * 1024; // 5MB
+
 app.post('/api/admin/upload', authenticateAdmin, (req, res) => {
   const { image, name } = req.body;
   if (!image) return res.status(400).json({ error: 'No image data provided.' });
@@ -459,8 +495,21 @@ app.post('/api/admin/upload', authenticateAdmin, (req, res) => {
       return res.status(400).json({ error: 'Invalid base64 image data.' });
     }
 
-    const ext = matches[1].split('/')[1] || 'png';
+    const mimeType = matches[1].toLowerCase();
+    const ext = mimeType.split('/')[1] || 'png';
+
+    // Validate file type
+    if (!ALLOWED_IMAGE_TYPES.includes(ext)) {
+      return res.status(400).json({ error: `File type "${ext}" not allowed. Accepted: ${ALLOWED_IMAGE_TYPES.join(', ')}` });
+    }
+
     const buffer = Buffer.from(matches[2], 'base64');
+
+    // Validate file size
+    if (buffer.length > MAX_UPLOAD_SIZE) {
+      return res.status(400).json({ error: `File too large. Maximum size: ${MAX_UPLOAD_SIZE / 1024 / 1024}MB` });
+    }
+
     const safeName = (name || 'image').replace(/[^a-z0-9]/gi, '_').toLowerCase();
     const filename = `${Date.now()}_${safeName}.${ext}`;
     const filePath = path.join(uploadsDir, filename);

@@ -1,8 +1,7 @@
-const fs = require('fs');
-const path = require('path');
+require('dotenv').config();
 const bcrypt = require('bcryptjs');
+const mongoose = require('mongoose');
 
-const dbFilePath = path.join(__dirname, 'veltron_data.json');
 const newPassword = process.argv[2];
 
 if (!newPassword) {
@@ -11,34 +10,40 @@ if (!newPassword) {
   process.exit(1);
 }
 
-if (!fs.existsSync(dbFilePath)) {
-  console.error('❌ Database file not found at', dbFilePath);
+const uri = process.env.MONGO_URI;
+if (!uri) {
+  console.error('❌ MONGO_URI is missing. Please set it in your .env file.');
   process.exit(1);
 }
 
-try {
-  const data = JSON.parse(fs.readFileSync(dbFilePath, 'utf8'));
-  
-  // Assuming 'admin' is the default username
-  const adminUser = data.users.find(u => u.username === 'admin');
-  
-  if (!adminUser) {
-    console.error('❌ Admin user not found in the database. Start the server once to generate it.');
-    process.exit(1);
+(async () => {
+  try {
+    await mongoose.connect(uri);
+    console.log('✅ Connected to MongoDB Atlas');
+
+    const userSchema = new mongoose.Schema({
+      username: String,
+      password_hash: String,
+      role: String
+    });
+    const User = mongoose.model('User', userSchema);
+
+    const adminUser = await User.findOne({ username: 'admin' });
+    if (!adminUser) {
+      console.error('❌ Admin user not found in database. Start the server once to generate it.');
+      process.exit(1);
+    }
+
+    const hash = bcrypt.hashSync(newPassword, 10);
+    adminUser.password_hash = hash;
+    await adminUser.save();
+
+    console.log('✅ Password successfully updated for user "admin"!');
+    console.log('Restart your Node.js server for the changes to take full effect.');
+  } catch (err) {
+    console.error('❌ Error updating password:', err.message);
+  } finally {
+    await mongoose.disconnect();
+    process.exit(0);
   }
-
-  // Hash new password
-  const salt = bcrypt.genSaltSync(10);
-  const hash = bcrypt.hashSync(newPassword, salt);
-  
-  // Update hash
-  adminUser.password_hash = hash;
-  
-  // Save
-  fs.writeFileSync(dbFilePath, JSON.stringify(data, null, 2), 'utf8');
-  console.log('✅ Password successfully updated for user "admin"!');
-  console.log('Restart your Node.js server for the changes to take full effect (if it caches tokens).');
-
-} catch (err) {
-  console.error('❌ Error updating password:', err.message);
-}
+})();

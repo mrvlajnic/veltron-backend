@@ -125,9 +125,59 @@
         </div>
     </footer>
 
-    <script src="script.js"></script>
+    <script src="https://veltroncars.com/script.js"></script>
 
-    <!-- Journal Client Logic -->
-    <!-- JS handled server side -->
+    <!-- Journal Client-Side Filter Logic -->
+    <script>
+        (function() {
+            const filterBar = document.getElementById('journal-filters');
+            const grid = document.getElementById('journal-grid');
+            if (!filterBar || !grid) return;
+
+            let currentFilter = 'all';
+
+            filterBar.addEventListener('click', function(e) {
+                const btn = e.target.closest('.journal-filter-btn');
+                if (!btn) return;
+
+                // Update active state
+                filterBar.querySelectorAll('.journal-filter-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+
+                currentFilter = btn.getAttribute('data-filter');
+
+                // Filter cards by reading the category badge text inside each card
+                const cards = grid.querySelectorAll('.journal-item-card');
+                let visibleCount = 0;
+
+                cards.forEach(card => {
+                    const badge = card.querySelector('.journal-cat-badge');
+                    const category = badge ? badge.textContent.trim() : '';
+
+                    if (currentFilter === 'all' || category.toLowerCase() === currentFilter.toLowerCase()) {
+                        card.style.display = '';
+                        visibleCount++;
+                    } else {
+                        card.style.display = 'none';
+                    }
+                });
+
+                // Show empty state if no matches
+                let emptyMsg = grid.querySelector('.journal-empty-state');
+                if (visibleCount === 0) {
+                    if (!emptyMsg) {
+                        emptyMsg = document.createElement('div');
+                        emptyMsg.className = 'journal-empty-state';
+                        emptyMsg.style.cssText = 'grid-column: 1 / -1; text-align: center; padding: 60px 20px; color: #888;';
+                        grid.appendChild(emptyMsg);
+                    }
+                    emptyMsg.textContent = 'No releases available in this category.';
+                    emptyMsg.style.display = 'block';
+                } else if (emptyMsg) {
+                    emptyMsg.style.display = 'none';
+                }
+            });
+        })();
+    </script>
 </body>
 </html>
