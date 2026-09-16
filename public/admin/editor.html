@@ -52,6 +52,7 @@
             border: none;
             transition: 0.2s;
         }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; }
         .btn-back { background: #374151; color: white; }
         .btn-back:hover { background: #4b5563; }
         .btn-save { background: var(--primary-red); color: white; }
@@ -105,8 +106,16 @@
             font-family: inherit;
             flex: 1;
         }
-        .ql-editor { padding: 0 !important; }
+        .ql-editor { padding: 0 !important; min-height: 200px; }
         .ql-editor.ql-blank::before { left: 0; font-style: normal; color: #9ca3af; }
+
+        /* Make images in editor responsive and not overflow the paper */
+        .ql-editor img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
 
         .btn-settings { background: #374151; color: white; }
         .btn-settings:hover { background: #4b5563; }
@@ -123,7 +132,6 @@
             border: 1px solid #e5e7eb;
             box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
             width: 350px;
-            display: none; /* hidden by default */
             flex-direction: column;
             gap: 15px;
             z-index: 100;
@@ -148,6 +156,76 @@
             width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px;
         }
 
+        /* Cover image row */
+        .cover-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .cover-row input { flex: 1; }
+        .btn-cover-upload {
+            padding: 7px 12px;
+            background: #374151;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            white-space: nowrap;
+        }
+        .btn-cover-upload:hover { background: #4b5563; }
+
+        /* ===== Toast Notification System ===== */
+        .toast-container {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            display: flex;
+            flex-direction: column-reverse;
+            gap: 10px;
+            z-index: 9999;
+            pointer-events: none;
+        }
+
+        .toast {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 20px;
+            border-radius: 8px;
+            color: white;
+            font-size: 0.9rem;
+            font-weight: 500;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            pointer-events: auto;
+            animation: toast-in 0.35s ease-out;
+            max-width: 400px;
+        }
+        .toast.toast-out {
+            animation: toast-out 0.3s ease-in forwards;
+        }
+
+        .toast-success { background: #16a34a; }
+        .toast-warning { background: #d97706; }
+        .toast-error   { background: #dc2626; }
+
+        .toast-icon { font-size: 1.1rem; flex-shrink: 0; }
+        .toast-msg  { flex: 1; }
+        .toast-close {
+            background: none; border: none; color: rgba(255,255,255,0.7);
+            font-size: 1.1rem; cursor: pointer; padding: 0 0 0 8px;
+        }
+        .toast-close:hover { color: white; }
+
+        @keyframes toast-in {
+            from { opacity: 0; transform: translateY(20px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes toast-out {
+            from { opacity: 1; transform: translateY(0); }
+            to   { opacity: 0; transform: translateY(20px); }
+        }
+
     </style>
 </head>
 <body>
@@ -156,6 +234,7 @@
         <button class="btn btn-back" id="btn-back">← Back</button>
         <input type="text" id="article-title" placeholder="Document Title...">
         <select id="article-category">
+            <option value="Release">Release</option>
             <option value="News">News</option>
             <option value="Engineering">Engineering</option>
             <option value="Design">Design</option>
@@ -176,7 +255,10 @@
                 </div>
                 <div class="form-group">
                     <label>Cover Image URL</label>
-                    <input type="text" id="article-cover" placeholder="https://... (or upload below)">
+                    <div class="cover-row">
+                        <input type="text" id="article-cover" placeholder="https://...">
+                        <button class="btn-cover-upload" id="btn-cover-upload">📷 Upload</button>
+                    </div>
                 </div>
                 <div class="form-group">
                     <label>Summary / Excerpt</label>
@@ -235,8 +317,38 @@
         </div>
     </div>
 
+    <!-- Toast Container -->
+    <div class="toast-container" id="toast-container"></div>
+
     <script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
     <script>
+        // ===== Toast Notification System =====
+        function showToast(message, type = 'success', duration = 4000) {
+            const container = document.getElementById('toast-container');
+            const icons = { success: '✓', warning: '⚠', error: '✕' };
+            
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.innerHTML = `
+                <span class="toast-icon">${icons[type] || '●'}</span>
+                <span class="toast-msg">${message}</span>
+                <button class="toast-close" onclick="dismissToast(this.parentElement)">✕</button>
+            `;
+            container.appendChild(toast);
+
+            // Auto-dismiss
+            const timer = setTimeout(() => dismissToast(toast), duration);
+            toast._timer = timer;
+        }
+
+        function dismissToast(toast) {
+            if (!toast || !toast.parentElement) return;
+            clearTimeout(toast._timer);
+            toast.classList.add('toast-out');
+            toast.addEventListener('animationend', () => toast.remove());
+        }
+
+        // ===== App Logic =====
         const API_BASE = '';
         let authToken = localStorage.getItem('veltron_admin_token');
         if (!authToken) {
@@ -244,6 +356,7 @@
         }
 
         let isDirty = false;
+        let slugManuallyEdited = false;
         const urlParams = new URLSearchParams(window.location.search);
         const editId = urlParams.get('id');
 
@@ -253,6 +366,7 @@
         const statusInput = document.getElementById('article-status');
         const coverInput = document.getElementById('article-cover');
         const summaryInput = document.getElementById('article-summary');
+        const saveBtn = document.getElementById('btn-save');
 
         // Add Custom Undo/Redo Icons
         var icons = Quill.import('ui/icons');
@@ -275,14 +389,16 @@
             placeholder: 'Start writing your document here...'
         });
 
-        // Dirty tracking
-        const setDirty = () => { isDirty = true; };
-        document.querySelectorAll('input, select, textarea').forEach(el => el.addEventListener('input', setDirty));
-        quill.on('text-change', setDirty);
+        // Track dirty state — but exclude title from auto-slug interference
+        const markDirty = () => { isDirty = true; };
+        slugInput.addEventListener('input', () => { slugManuallyEdited = true; markDirty(); });
+        document.querySelectorAll('#article-category, #article-status, #article-cover, #article-summary').forEach(el => el.addEventListener('input', markDirty));
+        titleInput.addEventListener('input', markDirty);
+        quill.on('text-change', markDirty);
 
-        // Auto-slug
+        // Auto-slug from title (only for new articles, and only if slug hasn't been manually edited)
         titleInput.addEventListener('input', () => {
-            if (!editId && !isDirty) { // only auto-gen if new and hasn't been manually edited
+            if (!editId && !slugManuallyEdited) {
                 slugInput.value = titleInput.value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
             }
         });
@@ -325,6 +441,30 @@
             return res.json();
         }
 
+        // ===== Upload helper (used by both image handler and cover upload) =====
+        async function uploadImage(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = async (e) => {
+                    try {
+                        const res = await fetchAuth('/api/admin/upload', {
+                            method: 'POST',
+                            body: JSON.stringify({ image: e.target.result, name: file.name })
+                        });
+                        if (res.success) {
+                            resolve(res.url);
+                        } else {
+                            reject(new Error(res.error || 'Upload failed'));
+                        }
+                    } catch (err) {
+                        reject(err);
+                    }
+                };
+                reader.onerror = () => reject(new Error('Failed to read file'));
+                reader.readAsDataURL(file);
+            });
+        }
+
         async function loadArticle() {
             if (!editId) return;
             try {
@@ -332,21 +472,25 @@
                 if (!post) return;
                 titleInput.value = post.title || '';
                 slugInput.value = post.slug || '';
-                categoryInput.value = post.category || 'General';
+                categoryInput.value = post.category || 'Release';
                 statusInput.value = post.status || 'published';
                 coverInput.value = post.cover_image || '';
                 summaryInput.value = post.summary || '';
                 quill.clipboard.dangerouslyPasteHTML(post.content || '');
                 
-                // reset dirty state after load
+                // If there's an existing slug, treat it as manually set
+                if (post.slug) slugManuallyEdited = true;
+
+                // Reset dirty state after load
                 setTimeout(() => { isDirty = false; }, 100);
             } catch (err) {
                 console.error(err);
-                alert("Failed to load article.");
+                showToast('Failed to load article.', 'error');
             }
         }
 
-        document.getElementById('btn-save').addEventListener('click', async () => {
+        // ===== Save Handler =====
+        saveBtn.addEventListener('click', async () => {
             const payload = {
                 title: titleInput.value,
                 slug: slugInput.value,
@@ -359,9 +503,13 @@
             };
 
             if (!payload.title || !payload.content || payload.content === '<p><br></p>') {
-                alert('Title and Content are required.');
+                showToast('Title and Content are required.', 'warning');
                 return;
             }
+
+            // Disable button to prevent double submit
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Saving...';
 
             try {
                 if (editId) {
@@ -369,21 +517,60 @@
                 } else {
                     const res = await fetchAuth('/api/admin/journal', { method: 'POST', body: JSON.stringify(payload) });
                     if (res.id) {
-                        // Redirect to edit mode so subsequent saves update instead of insert
                         isDirty = false;
+                        showToast('Document created successfully!', 'success');
                         window.location.href = `editor.html?id=${res.id}`;
                         return;
                     }
                 }
                 isDirty = false;
-                alert('Document saved successfully!');
+                showToast('Document saved successfully!', 'success');
             } catch (err) {
-                alert('Error saving document: ' + err.message);
+                showToast('Error saving document: ' + err.message, 'error');
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.textContent = 'Save Document';
             }
         });
 
-        // Quill Image Handler
+        // ===== Quill Image Handler (fixed: handles null selection) =====
         quill.getModule('toolbar').addHandler('image', () => {
+            const input = document.createElement('input');
+            input.setAttribute('type', 'file');
+            input.setAttribute('accept', 'image/*');
+
+            // Save the cursor position BEFORE the file picker opens (which blurs the editor)
+            const savedRange = quill.getSelection(true);
+
+            input.click();
+            input.onchange = async () => {
+                const file = input.files[0];
+                if (!file) return;
+
+                showToast('Uploading image...', 'warning', 10000);
+
+                try {
+                    const url = await uploadImage(file);
+
+                    // Use saved range, or fallback to end of document
+                    const insertAt = (savedRange && savedRange.index != null) ? savedRange.index : quill.getLength() - 1;
+                    quill.insertEmbed(insertAt, 'image', url);
+                    quill.setSelection(insertAt + 1);
+
+                    // Dismiss the uploading toast and show success
+                    const uploadingToast = document.querySelector('.toast-warning');
+                    if (uploadingToast) dismissToast(uploadingToast);
+                    showToast('Image uploaded successfully!', 'success');
+                } catch (err) {
+                    const uploadingToast = document.querySelector('.toast-warning');
+                    if (uploadingToast) dismissToast(uploadingToast);
+                    showToast('Image upload failed: ' + err.message, 'error');
+                }
+            };
+        });
+
+        // ===== Cover Image Upload Button =====
+        document.getElementById('btn-cover-upload').addEventListener('click', () => {
             const input = document.createElement('input');
             input.setAttribute('type', 'file');
             input.setAttribute('accept', 'image/*');
@@ -391,26 +578,22 @@
             input.onchange = async () => {
                 const file = input.files[0];
                 if (!file) return;
-                
-                // Read base64
-                const reader = new FileReader();
-                reader.onload = async (e) => {
-                    try {
-                        const res = await fetchAuth('/api/admin/upload', {
-                            method: 'POST',
-                            body: JSON.stringify({ image: e.target.result, name: file.name })
-                        });
-                        if (res.success) {
-                            const range = quill.getSelection();
-                            quill.insertEmbed(range.index, 'image', res.url);
-                        } else {
-                            alert('Upload failed');
-                        }
-                    } catch (err) {
-                        alert('Upload failed');
-                    }
-                };
-                reader.readAsDataURL(file);
+
+                showToast('Uploading cover image...', 'warning', 10000);
+
+                try {
+                    const url = await uploadImage(file);
+                    coverInput.value = url;
+                    markDirty();
+
+                    const uploadingToast = document.querySelector('.toast-warning');
+                    if (uploadingToast) dismissToast(uploadingToast);
+                    showToast('Cover image uploaded!', 'success');
+                } catch (err) {
+                    const uploadingToast = document.querySelector('.toast-warning');
+                    if (uploadingToast) dismissToast(uploadingToast);
+                    showToast('Cover upload failed: ' + err.message, 'error');
+                }
             };
         });
 
