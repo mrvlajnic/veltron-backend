@@ -8,7 +8,15 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const helmet = require('helmet');
 const sanitizeHtml = require('sanitize-html');
+const cloudinary = require('cloudinary').v2;
 const db = require('./db');
+
+// Configure Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
+});
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -481,11 +489,11 @@ app.delete('/api/admin/journal/:id', authenticateAdmin, async (req, res) => {
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
-// 📸 Image Upload Endpoint
+// 📸 Image Upload Endpoint (Cloudinary)
 const ALLOWED_IMAGE_TYPES = ['png', 'jpg', 'jpeg', 'webp', 'gif'];
 const MAX_UPLOAD_SIZE = 5 * 1024 * 1024; // 5MB
 
-app.post('/api/admin/upload', authenticateAdmin, (req, res) => {
+app.post('/api/admin/upload', authenticateAdmin, async (req, res) => {
   const { image, name } = req.body;
   if (!image) return res.status(400).json({ error: 'No image data provided.' });
 
@@ -511,13 +519,15 @@ app.post('/api/admin/upload', authenticateAdmin, (req, res) => {
     }
 
     const safeName = (name || 'image').replace(/[^a-z0-9]/gi, '_').toLowerCase();
-    const filename = `${Date.now()}_${safeName}.${ext}`;
-    const filePath = path.join(uploadsDir, filename);
 
-    fs.writeFileSync(filePath, buffer);
+    // Upload to Cloudinary
+    const result = await cloudinary.uploader.upload(image, {
+      folder: 'veltron-journal',
+      public_id: `${Date.now()}_${safeName}`,
+      resource_type: 'image'
+    });
 
-    const relativeUrl = `/uploads/${filename}`;
-    res.json({ success: true, url: relativeUrl, filename });
+    res.json({ success: true, url: result.secure_url, filename: result.public_id });
   } catch (err) {
     console.error('Upload error:', err);
     res.status(500).json({ error: 'Failed to upload image.' });
