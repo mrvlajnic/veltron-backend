@@ -11,7 +11,7 @@ const MAX_HISTORY_MESSAGES = 20;
 const MAX_OUTPUT_TOKENS = 1024;
 const REQUEST_TIMEOUT_MS = 45000;
 const RATE_LIMIT_WINDOW_MS = 60000;
-const RATE_LIMIT_MAX_REQUESTS = 20;
+const RATE_LIMIT_MAX_REQUESTS = Number(process.env.AI_LAB_RATE_LIMIT) || 10;
 const ALLOWED_ORIGINS = [
   'https://veltroncars.com',
   'https://www.veltroncars.com',
@@ -20,7 +20,8 @@ const ALLOWED_ORIGINS = [
   'http://localhost:5173',
 ];
 
-function createRateLimiter() {
+function createRateLimiter(maxOverride) {
+  const max = Number(maxOverride) || RATE_LIMIT_MAX_REQUESTS;
   const hits = new Map();
   setInterval(() => {
     const now = Date.now();
@@ -38,9 +39,9 @@ function createRateLimiter() {
       hits.set(key, window);
     }
     window.count += 1;
-    res.setHeader('X-RateLimit-Limit', String(RATE_LIMIT_MAX_REQUESTS));
-    res.setHeader('X-RateLimit-Remaining', String(Math.max(0, RATE_LIMIT_MAX_REQUESTS - window.count)));
-    if (window.count > RATE_LIMIT_MAX_REQUESTS) {
+    res.setHeader('X-RateLimit-Limit', String(max));
+    res.setHeader('X-RateLimit-Remaining', String(Math.max(0, max - window.count)));
+    if (window.count > max) {
       return res.status(429).json({
         error: 'Rate limit exceeded. Please wait a moment before sending another message.',
         code: 'RATE_LIMITED',
@@ -63,7 +64,16 @@ function validateChatBody(body) {
   if (body === null || typeof body !== 'object' || Array.isArray(body)) {
     return 'Request body must be a JSON object.';
   }
-  const { message, history, model } = body;
+  const { message, history, model, website_hp } = body;
+
+  // Honeypot: hidden field that humans never fill. Bots that auto-fill forms trip it.
+  // Message is deliberately generic so it cannot be used to probe the defense.
+  if (typeof website_hp === 'string' && website_hp.trim() !== '') {
+    return 'Invalid request.';
+  }
+  if (website_hp !== undefined && typeof website_hp !== 'string') {
+    return 'Invalid request.';
+  }
 
   if (typeof message !== 'string' || message.trim().length === 0) {
     return 'Field "message" must be a non-empty string.';
@@ -207,7 +217,7 @@ function createAiLabRouter(options) {
     });
   });
 
-  router.post('/chat', createRateLimiter(), async (req, res) => {
+  router.post('/chat', createRateLimiter(opts.rateLimit), async (req, res) => {
     const validationError = validateChatBody(req.body);
     if (validationError) {
       return res.status(400).json({ error: validationError, code: 'VALIDATION_ERROR' });

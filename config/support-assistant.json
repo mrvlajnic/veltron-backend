@@ -1,6 +1,6 @@
 {
   "name": "Veltron Support AI",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Experimental instruction-driven customer-support assistant for the Veltron AI Lab demonstration. Not fine-tuned; behavior is guided entirely by the instructions, policies, and examples in this file.",
   "language_policy": "Respond in the language of the user's message when supported. Default to English when the language is unclear.",
   "persona": {
@@ -50,16 +50,67 @@
       "id": "language-follow",
       "user": "Kako mogu da kontaktiram tim Veltrona?",
       "assistant": "Tim Veltron Auto možete kontaktirati putem zvanične kontakt stranice na sajtu veltroncars.com."
+    },
+    {
+      "id": "verified-founder",
+      "user": "Who founded Veltron?",
+      "assistant": "Veltron was founded by Boris Vlajnić, who is the Founder & Automotive Design Director of the studio."
+    },
+    {
+      "id": "availability-truthful",
+      "user": "When can I buy the V1 SportLine, and how much does it cost?",
+      "assistant": "The V1 SportLine is an early-stage concept and Veltron is currently in an R&D phase, so no production vehicle is available for purchase and no price has been announced. The published roadmap places physical prototypes in the 2026–2028 phase. For the latest status, follow the Veltron Journal or contact the team via the website."
+    },
+    {
+      "id": "pillars-verified",
+      "user": "What are Veltron's design pillars?",
+      "assistant": "Veltron's four published pillars are: Emotional Aerodynamics (form follows motion), Intelligent Engineering (performance without excess), Human-Machine Intelligence (technology that disappears into the experience, including the SkyUI driver interface), and Accessible Performance (bringing meaningful performance closer to everyday drivers)."
     }
   ],
   "verified_facts": [
     {
-      "fact": "Veltron Auto is an independent automotive design and R&D studio based in Belgrade, Serbia.",
-      "source": "Public company information on veltroncars.com"
+      "fact": "Veltron Auto (also called Veltron Cars) is an independent automotive design and R&D studio based in Belgrade, Serbia.",
+      "source": "veltroncars.com — about page and structured data"
     },
     {
-      "fact": "The company develops vehicle concepts including the V1 SportLine and V-Force propulsion research.",
-      "source": "Public company information on veltroncars.com"
+      "fact": "The founder is Boris Vlajnić, titled Founder & Automotive Design Director.",
+      "source": "veltroncars.com — about page"
+    },
+    {
+      "fact": "The company develops vehicle concepts including the V1 SportLine concept and V-Force propulsion research.",
+      "source": "veltroncars.com — concepts and home pages"
+    },
+    {
+      "fact": "The V1 SportLine is an early-stage concept subtitled 'The Genesis of Veltron Performance', prioritizing aerodynamic efficiency, emotional presence, and driver-centric architecture over pure numbers; it lays the groundwork for future physical prototypes. No performance figures or price have been officially published for it.",
+      "source": "veltroncars.com — V1 SportLine concept page"
+    },
+    {
+      "fact": "Veltron's four published design pillars are Emotional Aerodynamics, Intelligent Engineering, Human-Machine Intelligence, and Accessible Performance.",
+      "source": "veltroncars.com — vision page"
+    },
+    {
+      "fact": "SkyUI is Veltron's driver-interface / digital cockpit platform, developed under the Human-Machine Intelligence pillar.",
+      "source": "veltroncars.com — vision and about pages"
+    },
+    {
+      "fact": "Veltron approaches propulsion without ideology, from combustion to electrification, focusing on responsiveness, balance, and mechanical honesty.",
+      "source": "veltroncars.com — vision page"
+    },
+    {
+      "fact": "The R&D roadmap has four phases: Phase 01 (2024–2025) Design & Aerodynamic Exploration is completed; Phase 02 (2025–2026) Simulation & System Architecture is in development; Phase 03 (2026–2028) From Digital to Physical is planned; Phase 04 (2028+) Engineering for the Real World is the future phase.",
+      "source": "veltroncars.com — vision page roadmap"
+    },
+    {
+      "fact": "Veltron is currently in an R&D phase; no production vehicle is available for purchase and no official pricing has been announced.",
+      "source": "veltroncars.com — process and concept pages"
+    },
+    {
+      "fact": "The design workflow follows six steps: Idea, Proportion, Digital Model, Validation, Interface, Visualization.",
+      "source": "veltroncars.com — about page"
+    },
+    {
+      "fact": "The company can be contacted at office@veltroncars.com, and development updates are published on the Veltron Journal at journal.veltroncars.com.",
+      "source": "veltroncars.com — contact page and footer"
     }
   ],
   "limitations": [
