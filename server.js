@@ -535,6 +535,26 @@ app.post('/api/admin/upload', authenticateAdmin, async (req, res) => {
 });
 
 // ==========================================================================
+// 5b. AI LAB — experimental instruction-driven support assistant
+// ==========================================================================
+// Mounted at /api/ai-lab. Reads OPENROUTER_API_KEY from the environment.
+// If config/support-assistant.json is invalid, only the AI Lab endpoints
+// degrade to a 503 — the rest of the backend is unaffected.
+try {
+  const { createAiLabRouter } = require('./ai-lab/ai-lab-app');
+  app.use('/api/ai-lab', createAiLabRouter());
+  console.log('🧪 AI Lab routes mounted at /api/ai-lab');
+} catch (aiLabErr) {
+  console.error('❌ AI Lab configuration error — /api/ai-lab disabled:', aiLabErr.message);
+  app.use('/api/ai-lab', (req, res) => {
+    res.status(503).json({
+      error: 'The AI assistant configuration is invalid on this server. Contact the site administrator.',
+      code: 'CONFIG_INVALID',
+    });
+  });
+}
+
+// ==========================================================================
 // 6. HEALTH & ROUTING
 // ==========================================================================
 app.get('/api/ping', (req, res) => {
