@@ -449,8 +449,18 @@ function createAiLabRouter(options) {
       : allowedModels[0];
 
     const history = Array.isArray(req.body.history) ? req.body.history.slice(-MAX_HISTORY_MESSAGES) : [];
+
+    // Optional page context (sent by the site-wide chat widget). Silently
+    // ignored when missing or malformed; constrained to a safe path charset.
+    const rawPage = typeof req.body.page === 'string' ? req.body.page.slice(0, 120) : '';
+    const pageContext = /^\/[A-Za-z0-9\-._\/]*$/.test(rawPage) ? rawPage : '';
+
+    let systemPrompt = buildSystemPrompt(config);
+    if (pageContext) {
+      systemPrompt += `\nThe visitor is currently viewing ${pageContext} on veltroncars.com. When they ask about "this page" or what they are looking at, answer about that page; you may call browse_veltron_site with its path for exact content.`;
+    }
     const messages = [
-      { role: 'system', content: buildSystemPrompt(config) },
+      { role: 'system', content: systemPrompt },
       ...history.map((entry) => ({ role: entry.role, content: entry.content })),
       { role: 'user', content: req.body.message },
     ];
