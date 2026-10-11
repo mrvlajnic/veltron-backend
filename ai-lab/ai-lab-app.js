@@ -20,6 +20,157 @@ const ALLOWED_ORIGINS = [
   'http://localhost:5173',
 ];
 
+// Live site browsing (tool calling). The model may ask the server to fetch a
+// page from the public site; the server strips it to text and returns it.
+// This keeps the assistant current without maintaining facts in the JSON config.
+const SITE_ORIGIN = 'https://veltroncars.com';
+const SITE_FETCH_TIMEOUT_MS = 8000;
+const SITE_MAX_HTML_BYTES = 500000;
+const SITE_MAX_TEXT_CHARS = 8000;
+const SITE_CACHE_TTL_MS = 5 * 60 * 1000;
+const SITE_CACHE_MAX_ENTRIES = 30;
+const MAX_TOOL_ROUNDS = 3;
+const BROWSABLE_SITE_PATHS = [
+  '/index.html',
+  '/vision.html',
+  '/concepts.html',
+  '/concept-v1-sportline.html',
+  '/construction.html',
+  '/about.html',
+  '/contact.html',
+  '/journal.html',
+  '/pitch-deck.html',
+  '/VeltronV1.html',
+];
+
+const SITE_TOOLS = [
+  {
+    type: 'function',
+    function: {
+      name: 'browse_veltron_site',
+      description:
+        'Fetch the current published text content of a page on the official veltroncars.com website. Use this to read the latest site information when it is not covered by the verified facts.',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: {
+            type: 'string',
+            enum: BROWSABLE_SITE_PATHS,
+            description: 'Path of the site page to read, e.g. "/vision.html".',
+          },
+        },
+        required: ['path'],
+      },
+    },
+  },
+];
+
+function htmlToText(html) {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<\/(p|div|li|h[1-6]|tr|section|article|header|footer|blockquote)>/gi, '\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/[ \t]+/g, ' ')
+    .replace(/ ?\n ?/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function normalizeSitePath(raw) {
+  if (typeof raw !== 'string' || raw.trim().length === 0) {
+    throw new Error('path must be a non-empty string');
+  }
+  let p = raw.trim();
+  if (p.length > 200) throw new Error('path is too long');
+  if (!p.startsWith('/')) p = `/${p}`;
+  p = p.split('?')[0].split('#')[0];
+  p = p.replace(/\/{2,}/g, '/');
+  if (p !== '/' && p.endsWith('/')) p = p.slice(0, -1);
+  if (p === '/') p = '/index.html';
+  if (!/^\/[A-Za-z0-9\-._]*$/.test(p)) {
+    throw new Error('path is not a supported site page');
+  }
+  if (!BROWSABLE_SITE_PATHS.includes(p)) {
+    throw new Error('path is not on the browsable site map');
+  }
+  return p;
+}
+
+const siteCache = new Map();
+
+function readSiteCache(path) {
+  const hit = siteCache.get(path);
+  if (!hit) return null;
+  if (Date.now() - hit.at > SITE_CACHE_TTL_MS) {
+    siteCache.delete(path);
+    return null;
+  }
+  return hit.text;
+}
+
+function writeSiteCache(path, text) {
+  if (siteCache.size >= SITE_CACHE_MAX_ENTRIES) {
+    const oldest = siteCache.keys().next().value;
+    siteCache.delete(oldest);
+  }
+  siteCache.set(path, { text, at: Date.now() });
+}
+
+async function browseSitePage(rawPath) {
+  const path = normalizeSitePath(rawPath);
+  const cached = readSiteCache(path);
+  if (cached) {
+    return { path, content: cached };
+  }
+
+  const url = `${SITE_ORIGIN}${path}`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), SITE_FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        Accept: 'text/html',
+        'User-Agent': 'VeltronAILab/1.0 (+https://veltroncars.com)',
+      },
+    });
+    if (!response.ok) {
+      throw new Error(`the page returned HTTP ${response.status}`);
+    }
+    if (response.url) {
+      const finalUrl = new URL(response.url);
+      if (finalUrl.origin !== SITE_ORIGIN) {
+        throw new Error('the page redirected off-site');
+      }
+    }
+    const html = (await response.text()).slice(0, SITE_MAX_HTML_BYTES);
+    const text = htmlToText(html).slice(0, SITE_MAX_TEXT_CHARS);
+    if (text.length === 0) {
+      throw new Error('the page had no readable text');
+    }
+    const content = `LIVE CONTENT OF ${path} (fetched from veltroncars.com):\n\n${text}`;
+    writeSiteCache(path, content);
+    return { path, content };
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      throw new Error('the site took too long to respond');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function createRateLimiter(maxOverride) {
   const max = Number(maxOverride) || RATE_LIMIT_MAX_REQUESTS;
   const hits = new Map();
@@ -123,6 +274,14 @@ function buildSystemPrompt(config) {
     lines.push(`- ${fact.fact}`);
   }
   lines.push('');
+  lines.push('Live site access:');
+  lines.push('You can call the browse_veltron_site tool to fetch the current published text of a veltroncars.com page. Page map: /index.html is the home page, /vision.html is Vision, /concepts.html is Concepts, /concept-v1-sportline.html is the V1 SportLine concept, /construction.html is the Process page, /about.html is About, /contact.html is Contact, /journal.html is Journal, /pitch-deck.html is the pitch deck, /VeltronV1.html is the V1 archive.');
+  lines.push('Rules for using the tool:');
+  lines.push('- If the user asks you to check, browse, quote, or read the live site or a specific page, you MUST call browse_veltron_site at least once before answering. Never answer such requests from memory alone.');
+  lines.push('- For details not covered by the verified facts (specific page copy, page sections, contact options, recently published updates), browse the relevant page instead of guessing.');
+  lines.push('- Prefer the verified facts above for stable company information when browsing is not needed.');
+  lines.push('- After a successful browse, answer from the retrieved page text and briefly note that you checked the live site. If browsing fails, say you could not access the page and answer from the verified facts only.');
+  lines.push('');
   lines.push('Example interactions demonstrating the expected behavior:');
   for (const example of config.examples) {
     lines.push(`- User: ${example.user}`);
@@ -136,10 +295,19 @@ function buildSystemPrompt(config) {
   return lines.join('\n');
 }
 
-async function callOpenRouter({ apiKey, model, messages }) {
+async function callOpenRouter({ apiKey, model, messages, tools }) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
+    const payload = {
+      model,
+      messages,
+      max_tokens: MAX_OUTPUT_TOKENS,
+    };
+    if (Array.isArray(tools) && tools.length > 0) {
+      payload.tools = tools;
+      payload.tool_choice = 'auto';
+    }
     const response = await fetch(OPENROUTER_URL, {
       method: 'POST',
       signal: controller.signal,
@@ -149,11 +317,7 @@ async function callOpenRouter({ apiKey, model, messages }) {
         'HTTP-Referer': 'https://veltroncars.com/ai-lab/',
         'X-Title': 'Veltron AI Lab',
       },
-      body: JSON.stringify({
-        model,
-        messages,
-        max_tokens: MAX_OUTPUT_TOKENS,
-      }),
+      body: JSON.stringify(payload),
     });
 
     if (!response.ok) {
@@ -171,22 +335,61 @@ async function callOpenRouter({ apiKey, model, messages }) {
     }
 
     const data = await response.json();
-    const content = data && data.choices && data.choices[0] && data.choices[0].message
-      ? data.choices[0].message.content
+    const message = data && data.choices && data.choices[0] && data.choices[0].message
+      ? data.choices[0].message
       : null;
-    if (typeof content !== 'string' || content.trim().length === 0) {
+    if (!message) {
+      const err = new Error('Provider returned an empty response.');
+      err.code = 'PROVIDER_ERROR';
+      throw err;
+    }
+    const toolCalls = Array.isArray(message.tool_calls)
+      ? message.tool_calls.filter((tc) => tc && tc.function && typeof tc.function.name === 'string')
+      : [];
+    const content = message.content;
+    if (toolCalls.length === 0 && (typeof content !== 'string' || content.trim().length === 0)) {
       const err = new Error('Provider returned an empty response.');
       err.code = 'PROVIDER_ERROR';
       throw err;
     }
     return {
-      reply: content,
+      reply: typeof content === 'string' ? content : '',
+      toolCalls,
+      assistantTurn: {
+        role: 'assistant',
+        content: typeof content === 'string' ? content : null,
+        ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
+      },
       model: typeof data.model === 'string' ? data.model : model,
       usage: data.usage || null,
     };
   } finally {
     clearTimeout(timeout);
   }
+}
+
+async function runChatWithTools({ apiKey, model, messages, browsedPages }) {
+  for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
+    const result = await callOpenRouter({ apiKey, model, messages, tools: SITE_TOOLS });
+    if (result.toolCalls.length === 0) {
+      return result;
+    }
+    messages.push(result.assistantTurn);
+    for (const call of result.toolCalls) {
+      let content;
+      try {
+        const args = typeof call.function.arguments === 'string' ? JSON.parse(call.function.arguments) : {};
+        const page = await browseSitePage(args.path);
+        if (!browsedPages.includes(page.path)) browsedPages.push(page.path);
+        content = page.content;
+      } catch (err) {
+        content = `Tool error: ${err.message}`;
+      }
+      messages.push({ role: 'tool', tool_call_id: call.id, content });
+    }
+  }
+  // Tool budget exhausted — force a final answer without offering more tools.
+  return callOpenRouter({ apiKey, model, messages });
 }
 
 function createAiLabRouter(options) {
@@ -214,6 +417,10 @@ function createAiLabRouter(options) {
       limitations: config.limitations,
       model: opts.model || process.env.OPENROUTER_MODEL || DEFAULT_MODEL,
       configured: Boolean(opts.apiKey || process.env.OPENROUTER_API_KEY),
+      site_browsing: {
+        enabled: true,
+        pages: BROWSABLE_SITE_PATHS,
+      },
     });
   });
 
@@ -249,12 +456,28 @@ function createAiLabRouter(options) {
     ];
 
     try {
-      const result = await callOpenRouter({ apiKey, model, messages });
+      let result;
+      const messagesBeforeTools = messages.length;
+      try {
+        const browsedPages = [];
+        result = await runChatWithTools({ apiKey, model, messages, browsedPages });
+        result.browsedPages = browsedPages;
+      } catch (err) {
+        // Some auto-routed models may not support tool calling; degrade to a
+        // plain completion when no tool round has completed yet.
+        if (err.code === 'PROVIDER_ERROR' && messages.length === messagesBeforeTools) {
+          result = await callOpenRouter({ apiKey, model, messages });
+          result.browsedPages = [];
+        } else {
+          throw err;
+        }
+      }
       return res.json({
         reply: result.reply,
         model: result.model,
         usage: result.usage,
         config_version: config.version,
+        browsed_pages: result.browsedPages,
       });
     } catch (err) {
       if (err.name === 'AbortError') {
@@ -299,10 +522,13 @@ module.exports = {
   createAiLabRouter,
   buildSystemPrompt,
   validateChatBody,
+  htmlToText,
+  normalizeSitePath,
   DEFAULT_MODEL,
   MAX_MESSAGE_LENGTH,
   MAX_HISTORY_MESSAGES,
   MAX_OUTPUT_TOKENS,
   RATE_LIMIT_MAX_REQUESTS,
   RATE_LIMIT_WINDOW_MS,
+  BROWSABLE_SITE_PATHS,
 };
